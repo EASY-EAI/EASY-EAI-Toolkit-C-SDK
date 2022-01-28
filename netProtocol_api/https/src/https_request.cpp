@@ -1,0 +1,389 @@
+ /**
+ *
+ * Copyright 2021 by Guangzhou Easy EAI Technologny Co.,Ltd.
+ * website: www.easy-eai.com
+ *
+ * Author: Jiehao.Zhong <zhongjiehao@easy-eai.com>
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * License file for more details.
+ * 
+ */
+
+//===========================================system===========================================
+#include <sys/time.h>
+#include <sys/prctl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/ioctl.h>
+
+#include <netinet/if_ether.h>
+#include <netinet/in.h>
+#include <net/if.h>
+#include <arpa/inet.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <termios.h>
+#include <pthread.h>
+#include <assert.h>
+#include <errno.h>
+#include <ctype.h>
+#include <netdb.h>
+#include <iconv.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <dirent.h>
+#include <semaphore.h>
+
+//=========================================== C++ ===========================================
+#include <string>
+#include <queue>
+
+//========================================== https ===========================================
+#include "httplib.h"
+#include "https_request.h"
+
+using namespace std;
+using namespace httplib;
+
+static std::string g_ca_cert_file = CA_CERT_FILE;
+
+static std::string sendDataToHttps(const char *server, const char *func, std::queue<string> keyList, std::queue<string> valueList)
+{
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+    httplib::SSLClient cli(server);
+    cli.set_ca_cert_path(g_ca_cert_file.c_str());
+    cli.enable_server_certificate_verification(true);
+	
+    MultipartFormDataItems items1;
+    MultipartFormData pairData;
+    std::string key;
+    std::string value;
+    while(1){
+        pairData.name.clear();
+        pairData.content.clear();
+        pairData.filename.clear();
+        pairData.content_type.clear();
+
+        if(keyList.empty() || valueList.empty())
+            break;
+
+        key = keyList.front();
+        keyList.pop();
+        pairData.name.append(key);
+
+        value = valueList.front();
+        valueList.pop();
+        pairData.content.append(value);
+
+        items1.push_back(pairData);
+    }
+
+    auto boundary = std::string("+++++");
+    std::string content_type = "multipart/form-data; boundary=" + boundary;
+
+    std::string strfunc;
+    std::string body;
+    std::string contents;
+
+    std::string resBody;
+    resBody.clear();
+
+    for (const auto &item : items1) {
+        body += "--" + boundary + "\r\n";
+        body += "Content-Disposition: form-data; name=\"" + item.name + "\"";
+        if (!item.filename.empty()) {
+            body += "; filename=\"" + item.filename + "\"";
+        }
+        body += "\r\n";
+        if (!item.content_type.empty()) {
+            body += "Content-Type: " + item.content_type + "\r\n";
+        }
+        body += "\r\n";
+        if (item.content.empty()) {
+          //cout << "item.content.empty()" << endl;
+
+          ifstream  in("1.png", std::ios::in | std::ios::binary); //打开输入文件
+          in.seekg(0, std::ios::end);
+          contents.resize(in.tellg());
+          in.seekg(0, std::ios::beg);
+          in.read(&contents[0], contents.size());
+          in.close();
+          body += contents + "\r\n";
+        }
+        else {
+          //cout << "item.content not empty()" << endl;
+          body += item.content + "\r\n";
+        }
+    }
+    body += "--" + boundary + "--\r\n";
+
+
+    strfunc.clear();
+    strfunc.append(func);
+//    cout << strfunc << endl;
+    cout << body << endl;
+    if (auto res = cli.Post(strfunc.c_str(), body, content_type.c_str())) {
+        cout << res->status << endl;
+        cout << res->get_header_value("Content-Type") << endl;
+//        cout << res->body << endl;
+
+        if(200 == res->status)
+            resBody = res->body;
+    } else {
+        cout << "error code: " << res.error() << std::endl;
+    }
+#else
+    std::string resBody;
+    resBody.clear();
+#endif
+    return resBody;
+}
+
+static std::string sendDataToHttp(const char *server, const char *func, std::queue<string> keyList, std::queue<string> valueList)
+{
+    httplib::Client cli(server);
+	
+    MultipartFormDataItems items1;
+    MultipartFormData pairData;
+    std::string key;
+    std::string value;
+    while(1){
+        pairData.name.clear();
+        pairData.content.clear();
+        pairData.filename.clear();
+        pairData.content_type.clear();
+
+        if(keyList.empty() || valueList.empty())
+            break;
+
+        key = keyList.front();
+        keyList.pop();
+        pairData.name.append(key);
+
+        value = valueList.front();
+        valueList.pop();
+        pairData.content.append(value);
+
+        items1.push_back(pairData);
+    }
+
+    auto boundary = std::string("+++++");
+    std::string content_type = "multipart/form-data; boundary=" + boundary;
+
+    std::string strfunc;
+    std::string body;
+    std::string contents;
+
+    std::string resBody;
+    resBody.clear();
+
+    for (const auto &item : items1) {
+        body += "--" + boundary + "\r\n";
+        body += "Content-Disposition: form-data; name=\"" + item.name + "\"";
+        if (!item.filename.empty()) {
+            body += "; filename=\"" + item.filename + "\"";
+        }
+        body += "\r\n";
+        if (!item.content_type.empty()) {
+            body += "Content-Type: " + item.content_type + "\r\n";
+        }
+        body += "\r\n";
+        if (item.content.empty()) {
+          //cout << "item.content.empty()" << endl;
+
+          ifstream  in("1.png", std::ios::in | std::ios::binary); //打开输入文件
+          in.seekg(0, std::ios::end);
+          contents.resize(in.tellg());
+          in.seekg(0, std::ios::beg);
+          in.read(&contents[0], contents.size());
+          in.close();
+          body += contents + "\r\n";
+        }
+        else {
+          //cout << "item.content not empty()" << endl;
+          body += item.content + "\r\n";
+        }
+    }
+    body += "--" + boundary + "--\r\n";
+
+
+    strfunc.clear();
+    strfunc.append(func);
+//    cout << strfunc << endl;
+//    cout << body << endl;
+    if (auto res = cli.Post(strfunc.c_str(), body, content_type.c_str())) {
+        cout << res->status << endl;
+        cout << res->get_header_value("Content-Type") << endl;
+//        cout << res->body << endl;
+
+        if(200 == res->status)
+            resBody = res->body;
+    } else {
+        cout << "error code: " << res.error() << std::endl;
+    }
+    return resBody;
+}
+
+void set_customer_crt(const char *crt_file)
+{
+	if(NULL == crt_file)
+		return ;
+	
+	g_ca_cert_file.clear();
+	g_ca_cert_file.append(crt_file);	
+}
+
+static std::queue<std::string> g_keyList;
+static std::queue<std::string> g_valueList;
+void clear_multipart()
+{
+	std::queue<std::string> keyEmpty;
+	std::queue<std::string> valEmpty;
+	swap(keyEmpty, g_keyList);
+	swap(valEmpty, g_valueList);
+	
+	return ;
+}
+
+void add_multipart_form_data(const char *key, const char *value)
+{
+	std::string strKey;
+	strKey.clear();
+	strKey.append(key);
+	
+	std::string strValue;
+	strValue.clear();
+	strValue.append(value);
+	
+	g_keyList.push(strKey);
+	g_valueList.push(strValue);
+	
+	return ;
+}
+
+int32_t send_data_to_Https(const char *server, const char *func, char *result, uint32_t result_length)
+{
+	int minResultLength = result_length;
+	
+	std::string strResult = sendDataToHttps(server, func, g_keyList, g_valueList);
+	if(strResult.empty())
+		return -1;
+	
+	if(strResult.length() <= result_length){
+		minResultLength = strResult.length();
+	}
+	
+	if(NULL == result)
+		return -1;
+	
+	memcpy(result, strResult.c_str(), minResultLength);
+	
+	clear_multipart();
+	
+	return 0;
+}
+
+int32_t send_data_to_Http(const char *server, const char *func, char *result, uint32_t result_length)
+{
+	int minResultLength = result_length;
+	
+	std::string strResult = sendDataToHttp(server, func, g_keyList, g_valueList);
+	if(strResult.empty())
+		return -1;
+	
+	if(strResult.length() <= result_length){
+		minResultLength = strResult.length();
+	}
+	
+	if(NULL == result)
+		return -1;
+	
+	memcpy(result, strResult.c_str(), minResultLength);
+	
+	clear_multipart();
+	
+	return 0;
+}
+
+int32_t send_json_to_Https(const char *server, const char *func, const char *json, char *result, uint32_t result_lenth)
+{
+	return 0;	
+}
+
+int32_t send_json_to_Http(const char *server, const char *func, const char *json, char *result, uint32_t result_lenth)
+{
+	return 0;
+}
+
+int32_t get_file_from_https(const char *url, const char *func, const char *filePath)
+{	
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+    httplib::SSLClient cli(url);
+    cli.set_ca_cert_path(g_ca_cert_file.c_str());
+    cli.enable_server_certificate_verification(true);
+
+    printf("url: %s\n", url);
+    printf("func: %s\n", func);
+    std::string strfunc = func;
+
+    if (auto res = cli.Get(strfunc.c_str())) {
+        cout << "https res : " << res->status << endl;
+        if(200 == res->status){
+//            int contentLength = atoi(res->get_header_value("Content-Length").c_str());
+//            printf("-- body length : %d\n", contentLength);
+            ofstream ofs(filePath, ios::out | ios::binary); //二进制保存文件
+//            ofs.write(res->body.c_str(), contentLength);
+            ofs << res->body;
+            ofs.close();
+        }
+
+    } else {
+        cout << "https error code: " << res.error() << std::endl;
+        return (int)res.error();
+    }
+    return 0;
+#else
+	return -1;
+#endif
+}
+
+int32_t get_file_from_http(const char *url, const char *func, const char *filePath)
+{
+    httplib::Client cli(url);
+
+    printf("url: %s\n", url);
+    printf("func: %s\n", func);
+    std::string strfunc = func;
+
+    if (auto res = cli.Get(strfunc.c_str())) {
+        cout << "http res : " << res->status << endl;
+        if(200 == res->status){
+//            int contentLength = atoi(res->get_header_value("Content-Length").c_str());
+//            printf("-- body length : %d\n", contentLength);
+            ofstream ofs(filePath, ios::out | ios::binary); //二进制保存文件
+//            ofs.write(res->body.c_str(), contentLength);
+            ofs << res->body;
+            ofs.close();
+        }
+    } else {
+        cout << "http error code: " << res.error() << std::endl;
+        return (int)res.error();
+    }
+    return 0;
+}
+
+
+
+
+
