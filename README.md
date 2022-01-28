@@ -11,7 +11,7 @@ If you first come into contact with this project. You can do:
 [reference the Quick Start Guide](https://www.easy-eai.com/document_details/3/7)
 
 If you have extensive experience in embedded C development. You can do:  
-[reference the API development manual](www.baidu.com)
+[reference the API development manual](https://www.easy-eai.com/document_details/3/44)
 
 
 How to use：  
