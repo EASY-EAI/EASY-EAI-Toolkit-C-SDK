@@ -23,12 +23,6 @@ compiler_api()
 	if [ -e ../$1/CMakeLists.txt ]; then
 		cmake ../$1
 		make
-#		if [ -e ../$1/Readme ]; then
-#			cat ../$1/Readme
-#			if [ -e ../$1/sync.sh ]; then
-#			       	../$1/sync.sh 
-#			fi
-#		fi
 	fi
 	cd -
 
@@ -43,8 +37,9 @@ compiler_api()
 		fi
 		cp $1/include/* output/$1 -rf
 	else
-		cp $1/*.a output/$1 -rf
-		cp $1/*.h output/$1 -rf
+#		cp $1/*.a output/$1 -rf
+#		cp $1/*.h output/$1 -rf
+		cp $1/* output/$1 -rf
 	fi
 
 	if [ -e $1/Readme ]; then
