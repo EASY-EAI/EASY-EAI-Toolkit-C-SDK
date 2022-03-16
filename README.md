@@ -15,11 +15,20 @@ If you have extensive experience in embedded C development. You can do:
 
 
 How to use：  
-Execute in the root directory of this repository: ./build.sh   
-All libraries will be generated to:               ./EAI-libs
+[1] - Clone this Git Storage to Local   
+[2] - Execute in the root directory of this repository: ./build.sh   
+[3] - All libraries will be generated to:               ./EAI-libs
 
 important update log:
 ---
+> 2022-03-16 : 
+> * Release easyeai-api-0.1.1
+>   * media_api
+> 	  * [new] bmp file operate
+> 	  * [update] stream media encode & decode
+>   * netProtocol_api
+> 	  * [update] rtsp
+
 > 2022-01-28 : 
 > * Release easyeai-api-0.1.0
 >   * peripheral_api

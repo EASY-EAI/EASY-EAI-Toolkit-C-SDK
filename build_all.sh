@@ -6,7 +6,7 @@ SHELL_FOLDER=$(cd "$(dirname "$0")";pwd)
 cd $SHELL_FOLDER
 
 tar_name="easyeai-api"
-api_list=`ls -I "$tar_name*"  -I "build_all.sh" -I "encryption"`
+api_list=`ls -I "$tar_name*"  -I "build_all.sh" -I "encryption" -I "LICENSE" -I "README*.md"`
 
 usage()
 {
