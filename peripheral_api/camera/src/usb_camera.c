@@ -69,6 +69,7 @@ typedef struct {
 }usb_camera;
 
 static CList *g_dev_list;
+static int g_fps = 0;
 
 static int qbuf(int fd, struct v4l2_buffer *buf)
 {
@@ -205,6 +206,34 @@ static int set_fmt(int fd, int *width, int *height)
     return 0;
 }
 
+static int set_parm(int fd, int framerate)
+{
+	int ret;
+	struct v4l2_streamparm parm;
+
+	memset(&parm, 0, sizeof(struct v4l2_streamparm));
+	parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    parm.parm.capture.timeperframe.denominator = framerate;
+    parm.parm.capture.timeperframe.numerator = 1;
+
+	ret = ioctl(fd, VIDIOC_S_PARM, &parm);
+    if (ret < 0) {
+        perror("VIDIOC_S_PARM");
+        return -1;
+    }
+
+	memset(&parm, 0, sizeof(struct v4l2_streamparm));
+	parm.type=V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	ret = ioctl(fd, VIDIOC_G_PARM, &parm);
+    if (ret < 0) {
+        perror("VIDIOC_G_PARM");
+        return -1;
+    }
+	printf("Finally set fps:%f.\n",(double)(parm.parm.capture.timeperframe.denominator) /
+								(double)(parm.parm.capture.timeperframe.numerator));
+	return 0;
+}
+
 static int querycap(int fd, char *type)
 {
     struct v4l2_capability cap;
@@ -335,6 +364,11 @@ int usbcamera_getframe(int bus, int port, char *pbuf)
 	return -1;
 }
 
+void usbcamera_preset_fps(int fps)
+{
+	g_fps = fps;
+}
+
 static usb_camera *do_usbcamera_init(int bus, int port, int width, int height, RgaSURF_FORMAT fmt, int rot)
 {
 	usb_camera *new_camera = NULL;
@@ -370,6 +404,13 @@ static usb_camera *do_usbcamera_init(int bus, int port, int width, int height, R
         printf("%s: %d exit!\n", __func__, __LINE__);
         goto error1;
     }
+
+	if(g_fps){
+		if (set_parm(new_camera->fd, g_fps)) {
+			printf("%s: %d exit!\n", __func__, __LINE__);
+			goto error2;
+		}
+	}
 
 	//这里执行完驱动有可能会更新分辨率
 	if (set_fmt(new_camera->fd, &new_camera->init_width, &new_camera->init_height)) {

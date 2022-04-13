@@ -34,7 +34,8 @@ struct display {
     struct drm_buf buf[BUF_COUNT];
 };
 
-struct display g_disp;
+static struct display g_disp;
+static int g_use_ui = 0;
 
 static int drm_display_init(struct display *disp, int pz, int oz)
 {
@@ -55,6 +56,11 @@ static int drm_display_init(struct display *disp, int pz, int oz)
     return 0;
 }
 
+void disp_preset_uiLayer(int enable)
+{
+	g_use_ui = enable;
+}
+
 int disp_init(int width, int height)
 {
     int ret;
@@ -67,11 +73,13 @@ int disp_init(int width, int height)
     g_disp.width = width;
     g_disp.height = height;
     g_disp.plane_type = DRM_PLANE_TYPE_OVERLAY;
-#ifdef QT_MAJOR_VERSION
-    ret = drm_display_init(&g_disp, 1, 0); //DRM_PLANE_TYPE_PRIMARY on top
-#else
-	ret = drm_display_init(&g_disp, 0, 1); //DRM_PLANE_TYPE_OVERLAY on top
-#endif
+
+	if(g_use_ui){
+		ret = drm_display_init(&g_disp, 1, 0); //DRM_PLANE_TYPE_PRIMARY on top
+	}
+	else{
+		ret = drm_display_init(&g_disp, 0, 1); //DRM_PLANE_TYPE_OVERLAY on top
+	}
     if (ret)
         return ret;
 
