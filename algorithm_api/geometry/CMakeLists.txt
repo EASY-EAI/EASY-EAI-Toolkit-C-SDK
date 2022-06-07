@@ -13,8 +13,8 @@ set(CMAKE_C_COMPILER "arm-linux-gnueabihf-gcc")
 set(CMAKE_CXX_COMPILER "arm-linux-gnueabihf-g++")
 
 # use c++ 11
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11 -fPIC ")
 
 # decryption路径
 set(decryption_inc ../../encryption/include/decryption)
@@ -24,13 +24,12 @@ file(GLOB decryption_lib ../../encryption/lib/decryption/*.c)
 set(hardware_verify_inc ../../encryption/include/hardware_verify)
 file(GLOB hardware_verify_lib ../../encryption/lib/hardware_verify/*.c)
 
-
 ## 头文件
-set(api_inc include/)
+set(api_inc include/ include_internal)
 
 file(GLOB file_source src/*.cpp)
 set(source ${file_source})
 
 add_library(${PROJECT_NAME} STATIC ${source} ${decryption_lib} ${hardware_verify_lib})
 include_directories(${PROJECT_NAME} PUBLIC ${api_inc} ${decryption_inc} ${hardware_verify_inc})
-target_link_libraries(${PROJECT_NAME} -lpthread zbar)
+target_link_libraries(${PROJECT_NAME} -lpthread )

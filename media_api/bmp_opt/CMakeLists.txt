@@ -18,11 +18,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC")
 
 # decryption路径
 set(decryption_inc ../../encryption/include/decryption)
-file(GLOB decryption_lib ../../encryption/lib/decryption/*.cpp)
+file(GLOB decryption_lib ../../encryption/lib/decryption/*.c)
 
 # hardware verify
 set(hardware_verify_inc ../../encryption/include/hardware_verify)
-file(GLOB hardware_verify_lib ../../encryption/lib/hardware_verify/*.cpp)
+file(GLOB hardware_verify_lib ../../encryption/lib/hardware_verify/*.c)
 
 ## 头文件
 set(api_inc include/ include_internal/)
