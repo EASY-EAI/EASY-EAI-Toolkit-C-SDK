@@ -14,16 +14,16 @@ public:
     static IPCServer *instance() { return m_pSelf; }
     static void createIPCServer();
 
-	void init(int32_t port, int32_t clientMaxNum);
-	void unInit();
-	bool isInited(){return mbObjIsInited;}
+    void init(int32_t clientMaxNum, int32_t port = IPCSERVER_PORT);
+    void unInit();
+    bool isInited(){return mbObjIsInited;}
     
     int32_t getDstSocketFd(int32_t id);
     uint32_t getSocketEvents(int32_t socketFd);
     void setSocketFd_Events(int32_t socketFd, uint32_t events);
 
-	pthread_t mAcceptTid;
-	pthread_t mReadTid;
+    pthread_t mAcceptTid;
+    pthread_t mReadTid;
     int32_t mListenFd;
 
     int32_t mListenEpollFd;
@@ -38,7 +38,7 @@ private:
     static IPCServer *m_pSelf;
     
     int32_t mPort;
-	bool mbObjIsInited;
+    bool mbObjIsInited;
 };
 
 

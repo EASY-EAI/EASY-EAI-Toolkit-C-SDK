@@ -121,6 +121,30 @@ static std::string GetJSONObject(const char * const contents, const char *key)
     }
     return subStr;
 }
+static std::string GetJSONList(const char * const contents, const char *section)
+{
+    std::string subStr;
+    subStr.clear();
+    
+    cJSON *contents_json = cJSON_Parse(contents); //转成json数据
+    if(!contents_json){
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL) {
+            fprintf(stderr, "Error before: %s\n", error_ptr);
+        }
+        return subStr;
+    }
+
+    cJSON *section_json = cJSON_GetObjectItem(contents_json, section);
+    if(!section_json){
+        goto end;
+    }
+    
+    subStr.append(cJSON_PrintUnformatted(section_json));
+end:
+    cJSON_Delete(contents_json);
+    return subStr;
+}
 static int GetJSONListSize(const char * const contents, const char *section)
 {
     int listSize = 0;
@@ -158,11 +182,17 @@ static int GetJSONListInt(const char * const contents, const char *section, int 
         return val;
     }
 
+    int listSize = 0;
 	cJSON *section_json;
 	cJSON *orderSub_json;
 	
     section_json = cJSON_GetObjectItem(contents_json, section);
     if(!section_json){
+        goto end;
+    }
+
+    listSize = cJSON_GetArraySize(section_json);
+    if((0 == listSize) || (listSize <= pos)){
         goto end;
     }
 
@@ -196,6 +226,7 @@ static std::string GetJSONListStr(const char * const contents, const char *secti
         return subStr;
     }
 
+    int listSize = 0;
 	cJSON *section_json;
 	cJSON *orderSub_json;
 	
@@ -203,15 +234,22 @@ static std::string GetJSONListStr(const char * const contents, const char *secti
     if(!section_json){
         goto end;
     }
-
+    
 	orderSub_json = cJSON_GetArrayItem(section_json, pos);
     if(!orderSub_json){
+        goto end;
+    }
+
+    listSize = cJSON_GetArraySize(section_json);
+    if((0 == listSize) || (listSize <= pos)){
         goto end;
     }
 
     data = cJSON_GetObjectItemCaseSensitive(orderSub_json, key);
     if (cJSON_IsString(data)) {
         subStr.append(data->valuestring);
+    }else{
+        printf("date is not string\n");
     }
 
 end:
@@ -278,6 +316,33 @@ int32_t get_object_from_json(const char *json_str, const char *key, char *data, 
 	
 	return minDataLength;
 }
+int32_t get_list_from_json(const char *json_str, const char *key, char *data, uint32_t dataLen)
+{
+	uint32_t minDataLength = dataLen;
+	
+	std::string strContents;
+	strContents.clear();
+	
+	if((NULL == data) || (0 == dataLen))
+		return -1;
+	
+	strContents = GetJSONList(json_str, key);
+	if(strContents.empty()){
+		memset(data, 0, minDataLength);
+		minDataLength = 0;
+	}else{
+		if(strContents.length() >= dataLen){
+			memset(data, 0, minDataLength);
+			minDataLength = -1;
+		}else{
+			minDataLength = strContents.length();
+			memcpy(data, strContents.c_str(), minDataLength);
+		}
+	}
+	
+	return minDataLength;
+}
+
 
 int32_t get_list_size_from_json(const char *json_str, const char *list_key)
 {
@@ -305,6 +370,7 @@ int32_t get_string_from_list(const char *json_str, const char *list_name, int po
 	
 	strContents = GetJSONListStr(json_str, list_name, pos, key);
 	if(strContents.empty()){
+        printf("strContents is empty\n");
 		memset(data, 0, minDataLength);
 		minDataLength = 0;
 	}else{
@@ -318,108 +384,111 @@ int32_t get_string_from_list(const char *json_str, const char *list_name, int po
 	return minDataLength;
 }
 
-
-static std::queue<std::string> g_keyList;
-static std::queue<std::string> g_typeList;
-static std::queue<std::string> g_valueList;
-void clear_json_cache()
+void *create_json_object()
 {
-	std::queue<std::string> keyEmpty;
-	std::queue<std::string> typeEmpty;
-	std::queue<std::string> valEmpty;
-	swap(keyEmpty,  g_keyList);
-	swap(typeEmpty, g_typeList);
-	swap(valEmpty,  g_valueList);
-	
-	return ;
+    void *pObj = NULL;
+
+	cJSON *pContents = cJSON_CreateObject();
+    pObj = (void *)pContents;
+
+    return pObj;
+}
+void  add_null_to_object(void *pObj, const char * const key)
+{
+    if(pObj) {
+        cJSON_AddNullToObject((cJSON *)pObj, key);
+    }
 }
 
-//type为空，默认按string处理
-void add_json_cache(const char *key, const char *type, const char *value)
+void add_bool_to_object(void *pObj, const char * const key, bool bTorF)
 {
-	if( (NULL == key)||(0 == strlen(key)) )
-		return ;
-	
-	std::string strKey;
-	strKey.clear();
-	strKey.append(key);
-	
-	std::string strType;
-	strType.clear();
-	if( (NULL == type) || (0 == strlen(type)) ){
-		strType.append("string");
-	}else{
-		strType.append(type);
-	}
-	
-	std::string strValue;
-	strValue.clear();
-	if(NULL != value){
-		strValue.append(value);
-	}
-	
-	
-	g_keyList.push(strKey);
-	g_typeList.push(strType);
-	g_valueList.push(strValue);
-	
-	return ;
+    if(pObj) {
+        cJSON_AddBoolToObject((cJSON *)pObj, key, (const cJSON_bool)bTorF);
+    }
 }
 
-int32_t create_json_string(char *json_string, uint32_t dataLen)
+void add_number_to_object(void *pObj, const char * const key, double number)
 {
-    char *string = NULL;
-	int minDataLength = 0;
-	if(NULL == json_string)
-		return -1;
-	
-	cJSON *contents = cJSON_CreateObject();
+    if(pObj) {
+        cJSON_AddNumberToObject((cJSON *)pObj, key, number);
+    }
+}
 
-	std::string key;
-	std::string type;
-	std::string value;
+void add_string_to_object(void *pObj, const char * const key, const char * const string)
+{
+    if(pObj) {
+        cJSON_AddStringToObject((cJSON *)pObj, key, string);
+    }
+}
 
-    if(g_keyList.empty() || g_typeList.empty() || g_valueList.empty())
-		return -1;
-		
-    while(1){
-        if(g_keyList.empty() || g_typeList.empty() || g_valueList.empty())
-            break;
-
-        key = g_keyList.front();
-        g_keyList.pop();
-
-        type = g_typeList.front();
-        g_typeList.pop();
-		
-        value = g_valueList.front();
-        g_valueList.pop();
-	
-		//只要类型不是number，一律按字符串处理
-		if(0 == strcmp(type.c_str(), "number")){
-			if (cJSON_AddNumberToObject(contents, key.c_str(), atoi(value.c_str())) == NULL){
-				goto end;
-			}
-		}else{
-			if (cJSON_AddStringToObject(contents, key.c_str(), value.c_str()) == NULL){
-				goto end;
-			}
-		}
+void *add_object_to_object(void *pParentObj, const char * const subObjName)
+{
+    void *pSubObj = NULL;
+	cJSON *pContents = NULL;
+    
+    if(pParentObj) {
+        pContents = cJSON_AddObjectToObject((cJSON *)pParentObj, subObjName);
+        pSubObj = (void *)pContents;
     }
 
-    string = cJSON_Print(contents);
-    if (string == NULL) {
-        fprintf(stderr, "Failed to print monitor.\n");
+    return pSubObj;
+}
+
+void  add_object_to_object2(void *pParentObj, const char * const subObjName, void *pSubObj)
+{
+    if((pParentObj)&&(pSubObj)) {
+        cJSON_AddItemToObject((cJSON *)pParentObj, subObjName, (cJSON *)pSubObj);
+    }
+}
+
+void  add_object_to_object3(void *pParentObj, const char * const subObjName, char *pSubObjSrt)
+{
+    if(pParentObj) {
+        cJSON *pSubObj = cJSON_Parse(pSubObjSrt);
+        if(false == cJSON_AddItemToObject((cJSON *)pParentObj, subObjName, (cJSON *)pSubObj)) {
+            cJSON_Delete(pSubObj);
+        }
+    }
+}
+
+void *add_list_to_object(void *pParentObj, const char * const listName)
+{
+    void *pList = NULL;
+	cJSON *pContents = NULL;
+    
+    if(pParentObj) {
+        pContents = cJSON_AddArrayToObject((cJSON *)pParentObj, listName);
+        pList = (void *)pContents;
+    }
+
+    return pList;
+}
+
+void  add_item_to_list(void *pList, void *pItem)
+{
+    if((pList)&&(pItem)) {
+        cJSON_AddItemToArray((cJSON *)pList, (cJSON *)pItem);
+    }
+}
+
+char *object_data(void *pObject)
+{
+    if(pObject){
+        return cJSON_Print((cJSON *)pObject);
     }else{
-		minDataLength = strlen(string);
-		if(minDataLength > dataLen){
-			minDataLength = dataLen;
-		}
-		memcpy(json_string, string, minDataLength);
-	}
-end:
-	clear_json_cache();
-    cJSON_Delete(contents);
-    return minDataLength;
+        return NULL;
+    }
+}
+
+int32_t delete_json_object(void *pObject)
+{
+    int32_t ret = -1;
+
+    if(pObject) {
+        cJSON_Delete((cJSON *)pObject);
+        ret = 0;
+    }
+    
+    return ret;
 }
 

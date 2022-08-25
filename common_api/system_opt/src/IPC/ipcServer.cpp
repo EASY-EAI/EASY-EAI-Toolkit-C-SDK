@@ -107,6 +107,8 @@ void *clientAcceptThread(void *para)
                     pSelf->mpReadChnDataMgr->create_data_channel(cliSocketFd);
                     // 则给客户端创建一条写缓存通道
                     pSelf->mpWriteChnDataMgr->create_data_channel(cliSocketFd);
+                    // 注意：
+                    //   1、读写缓存通道到与客户端链接关联。若客户端的链接已断开(心跳已停止)则也要销毁对应的读写缓存通道。
                 }
             }
         }
@@ -176,7 +178,7 @@ void *channelDataTransmitThread(void *para)
                         // 获取目标通道
                         dstClientFd = pSelf->getDstSocketFd(msg.dstClientId);
                         if(dstClientFd > 0){
-                        
+
                             // 等待目标通道，直到通道不满
                             while(pSelf->mpWriteChnDataMgr->data_channel_is_full(dstClientFd))
                             {
@@ -217,7 +219,6 @@ void *channelDataTransmitThread(void *para)
                 ev.data.fd = srcClientFd;
                 epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, srcClientFd, &ev);
                 pSelf->setSocketFd_Events(srcClientFd, ev.events);
-
             }
             
         }
@@ -288,18 +289,23 @@ void *readDataFromClientThread(void *para)
                     continue;
                 
                 ret = tcp_recv(srcClientFd, &msg, sizeof(msg));
-                /* 容错处理
-                 * 
-                 */
+                // 容错处理:
+                if(0 == ret){
+                    // 去读下一个可读的fd
+                    usleep(200*1000);
+                    continue;
+                }
                 
                 msg.payload = NULL;
                 msg.payload = malloc(msg.msgLen);
                 if(msg.payload){
                     // 取出payload
                     ret = tcp_recv(srcClientFd, msg.payload, msg.msgLen);
-                    /* 容错处理
-                     * 
-                     */
+                    if(ret != msg.msgLen){
+                        printf("[IPCServer]: ---Read a invalid Packet, From (src)%d---\n", srcClientFd);                        
+                        free(msg.payload);
+                        continue;
+                    }
                     
                     if(CLIENT_REGISTER == msg.msgType){
                         // 注册客户端Id
@@ -310,10 +316,32 @@ void *readDataFromClientThread(void *para)
                     }else if(CLIENT_HEARTBEAT == msg.msgType){
                         // 客户端给过来的心跳
                         free(msg.payload);
-                    
+                        
+                    }else if(CLIENT_QUERY == msg.msgType){
+                        // 客户端A过来查询客户端B是否已注册
+                        int32_t registedClientId;
+                        memcpy(&registedClientId, msg.payload, sizeof(registedClientId));
+                        // 获取目标通道
+                        int32_t registedClientFd = pSelf->getDstSocketFd(registedClientId);
+                        if(registedClientFd <= 0){
+                            memset(msg.payload, 0, msg.msgLen);
+                        }
+                        // 为了减少memcpy次数，提高运行效率。则入列成功后msg.payload需要在get_data_fromChannel里面free掉。
+                        ret = pSelf->mpReadChnDataMgr->send_data_toChannel(srcClientFd, msg);
+                        if(0 == ret){
+                            // 如果读缓存通道已满则关闭当前fd的读监听
+                            if(pSelf->mpReadChnDataMgr->data_channel_is_full(srcClientFd)){
+                                //printf("[IPCServer]: ---Close read listen, (src)%d---\n", srcClientFd);
+                                ev.events  = pSelf->getSocketEvents(srcClientFd);
+                                ev.events &= ~EPOLLIN; //关闭读监听。
+                                ev.data.fd = srcClientFd;
+                                epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, srcClientFd, &ev);
+                                pSelf->setSocketFd_Events(srcClientFd, ev.events);
+                            }
+                        }else{
+                            free(msg.payload);
+                        }
                     }else{
-                        // 注意要越过内部使用的协议
-                        msg.msgType -= CLIENT_NUM;
                         //printf("[IPCServer]: ---Push msg node to ReadChannel, [(src)%d >> (dst)%d]---\n", msg.srcClientId, msg.dstClientId);
                         // 为了减少memcpy次数，提高运行效率。则入列成功后msg.payload需要在get_data_fromChannel里面free掉。
                         ret = pSelf->mpReadChnDataMgr->send_data_toChannel(srcClientFd, msg);
@@ -421,7 +449,7 @@ void IPCServer::createIPCServer()
    }
 }
 
-void IPCServer::init(int32_t port, int32_t clientMaxNum)
+void IPCServer::init( int32_t clientMaxNum, int32_t port)
 {
     mPort = port;
 
@@ -655,13 +683,13 @@ void IPCServer::setSocketFd_Events(int32_t socketFd, uint32_t events)
     }
 }
 
-int32_t IPC_server_create(int port, int clientMaxNum)
+int32_t IPC_server_create(int clientMaxNum)
 {
     int ret = -1;
 
     IPCServer::createIPCServer();
     if(!IPCServer::instance()->isInited()){
-        IPCServer::instance()->init(port, clientMaxNum);
+        IPCServer::instance()->init(clientMaxNum);
         ret = 0;
     }
     printf("ipc server create succ\n");

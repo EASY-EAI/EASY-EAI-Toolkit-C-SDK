@@ -42,6 +42,7 @@ enum eChnErr{
 enum ClientAction{
     CLIENT_NULL = 0,
     CLIENT_REGISTER,    //注册
+    CLIENT_QUERY,       //查询
     CLIENT_HEARTBEAT,   //心跳
     CLIENT_NUM
 };

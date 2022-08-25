@@ -34,16 +34,23 @@ void *readDataFromServerThread(void *para)
         *  2. msg.msgHeader不对(需要把缓冲区清空,并通知服务器重发--怎么重发？)
         *  3. ret ≠ sizeof(msg)
         */
-
+        
         msg.payload = NULL;
         msg.payload = malloc(msg.msgLen);
         if(msg.payload){
             // 取出payload
             ret = tcp_recv(pSelf->mSocketFd, msg.payload, msg.msgLen);
             if(-1 != ret){
-                // 把payload写入回调
-                if((pSelf->mpCliParentObj)&&(pSelf->mpCliCBFunc)){
-                    pSelf->mpCliCBFunc(pSelf->mpCliParentObj, &msg);
+                if(msg.msgType >= CLIENT_NUM){
+                    // 注意要越过内部使用的协议
+                    msg.msgType -= CLIENT_NUM;
+                    
+                    // 把payload写入回调
+                    if((pSelf->mpCliParentObj)&&(pSelf->mpCliCBFunc)){
+                        pSelf->mpCliCBFunc(pSelf->mpCliParentObj, &msg);
+                    }
+                }else if(msg.msgType == CLIENT_QUERY){
+                    pSelf->updataQueryResult(&msg);
                 }
             }
             
@@ -113,6 +120,8 @@ IPCClient::IPCClient() :
     mSocketFd(-1),
     mpCliParentObj(NULL),
     mpCliCBFunc(NULL),
+    mQueryClientId(0),
+    mbQueryClientIsRegistered(false),
     mClientId(0),
 	mbObjIsInited(false)
 {
@@ -131,7 +140,7 @@ void IPCClient::createIPCClient()
    }
 }
 
-void IPCClient::init(int32_t srvPort, int32_t cliId)
+void IPCClient::init(int32_t cliId, int32_t srvPort)
 {
     mClientId = cliId;
 
@@ -237,6 +246,15 @@ void IPCClient::unInit()
     close(mSocketFd);
 }
 
+bool IPCClient::targetClientIsRegistered()
+{
+    bool ret = mbQueryClientIsRegistered;
+    
+    mbQueryClientIsRegistered = false;
+
+    return ret;
+}
+
 int32_t IPCClient::sendDataToClient(int32_t tagId, int32_t type, void *data, int32_t dataLen)
 {
     if(!isInited())
@@ -261,6 +279,20 @@ int32_t IPCClient::sendDataToClient(int32_t tagId, int32_t type, void *data, int
     return 0;
 }
 
+int32_t IPCClient::updataQueryResult(IPC_MSG_t *pMsg)
+{
+    int32_t queryResult = 0;
+    memcpy(&queryResult, pMsg->payload, sizeof(queryResult));
+    
+    if((0 != queryResult) && (mQueryClientId == queryResult)){
+        mbQueryClientIsRegistered = true;
+    }else{
+        mbQueryClientIsRegistered = false;
+    }
+
+    return 0;
+}
+
 int32_t IPCClient::registerClient()
 {
     int32_t data = 0;
@@ -273,6 +305,26 @@ int32_t IPCClient::registerClient()
     msg.payload = malloc(sizeof(data));
     if(msg.payload){
         memcpy(msg.payload, &data, sizeof(data));
+        // 一个进程多个线程调用同一个sendDataToClient的情况，考虑一下是否需要对队列加锁
+        mMsgQueue.push(msg);
+    }
+
+    return 0;
+}
+
+int32_t IPCClient::queryRegisteredClient(int32_t dstClientId)
+{
+    mQueryClientId = dstClientId;
+
+    IPC_MSG_t msg = {0};
+    memcpy(msg.msgHeader, "EAI-BOX", sizeof(msg.msgHeader));
+    msg.srcClientId = mClientId;
+    msg.dstClientId = mClientId;
+    msg.msgType  = CLIENT_QUERY;
+    msg.msgLen  = sizeof(mQueryClientId);
+    msg.payload = malloc(sizeof(mQueryClientId));
+    if(msg.payload){
+        memcpy(msg.payload, &mQueryClientId, sizeof(mQueryClientId));
         // 一个进程多个线程调用同一个sendDataToClient的情况，考虑一下是否需要对队列加锁
         mMsgQueue.push(msg);
     }
@@ -304,11 +356,11 @@ int32_t IPC_client_create()
     IPCClient::createIPCClient();
     return 0;
 }
-int32_t IPC_client_init(int32_t srvPort, int32_t cliId)
+int32_t IPC_client_init(int32_t cliId)
 {
     int32_t ret = -1;
     if(!IPCClient::instance()->isInited()){
-        IPCClient::instance()->init(srvPort, cliId);
+        IPCClient::instance()->init(cliId);
         ret = 0;
     }
     return ret;
@@ -331,7 +383,23 @@ int32_t IPC_client_set_callback(void *pObj, IPC_Client_CB func)
     }
     return ret;
 }
-
+int32_t IPC_client_query_registered_client(int32_t dstCliId)
+{
+    int32_t ret = -1;
+    if(IPCClient::instance()->isInited()){
+        IPCClient::instance()->queryRegisteredClient(dstCliId);
+        ret = 0;
+    }
+    return ret;
+}
+int32_t IPC_client_dstClient_is_registered()
+{
+    int32_t ret = 0;
+    if(IPCClient::instance()->isInited()){
+        ret = IPCClient::instance()->targetClientIsRegistered();
+    }
+    return ret;
+}
 int32_t IPC_client_sendData(int32_t tagId, int32_t type, void *data, int32_t dataLen)
 {
     int32_t ret = -1;

@@ -23,6 +23,20 @@ How to use：
 
 important update log:
 ---
+> 2022-08-25 : 
+> * Release easyeai-api-0.2.0
+>   * common_api
+> 	  * [new] font engine (can write chinese on picture)
+> 	  * [update] Linux system operation (fixed some bugs for IPC)
+> 	  * [update] json parser (support multithreading calls)
+>   * media_api
+> 	  * [update] stream media encode & decode
+>   * netProtocol_api
+> 	  * [update] rtsp (support tcp capture rtsp stream)
+>   * peripheral_api
+> 	  * [new] pwm
+> 	  * [update] camera (can set output data format)
+>
 > 2022-05-24 : 
 > * Release easyeai-api-0.1.3
 >   * algorithm_api

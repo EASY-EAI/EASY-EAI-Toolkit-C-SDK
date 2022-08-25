@@ -67,6 +67,14 @@ ChnDataMgr::~ChnDataMgr()
 
 void ChnDataMgr::create_data_channel(int32_t socketFd)
 {
+    if(!mChannelList.empty()){
+        for(auto iter = mChannelList.begin(); iter != mChannelList.end();iter++) {
+            /* 避免创建重复通道 */
+            if(socketFd == (*iter).cliSocketFd)
+                return ;
+        }
+    }
+    
     SocketChnData_t pChannel = {0};
     pChannel.cliSocketFd = socketFd;
     pChannel.startIndex = 0;
@@ -137,6 +145,7 @@ void ChnDataMgr::destroy_data_channel(int32_t socketFd)
 bool ChnDataMgr::data_channel_is_full(int32_t socketFd)
 {
     if(mChannelList.empty()){
+        //printf("channel List is empty ...\n");
         return true;
     }
     
@@ -165,6 +174,7 @@ bool ChnDataMgr::data_channel_is_full(int32_t socketFd)
     }
     
     // 未创建的socketFd通道
+    //printf("channel [%d] is not create ...\n", socketFd);
     return true;
 }
 

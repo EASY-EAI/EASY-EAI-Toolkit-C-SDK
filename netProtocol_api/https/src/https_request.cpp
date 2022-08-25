@@ -61,6 +61,10 @@ static std::string g_ca_cert_file = CA_CERT_FILE;
 static std::string sendDataToHttps(const char *server, const char *func, std::queue<string> keyList, std::queue<string> valueList)
 {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+    if(0 != access(g_ca_cert_file.c_str(), F_OK)){
+        printf("[Certificate File Not Exists] path :(%s)\n", g_ca_cert_file.c_str());
+    }
+    
     httplib::SSLClient cli(server);
     cli.set_ca_cert_path(g_ca_cert_file.c_str());
     cli.enable_server_certificate_verification(true);
@@ -146,6 +150,7 @@ static std::string sendDataToHttps(const char *server, const char *func, std::qu
 #else
     std::string resBody;
     resBody.clear();
+    printf("not support https version\n");
 #endif
     return resBody;
 }
@@ -316,18 +321,128 @@ int32_t send_data_to_Http(const char *server, const char *func, char *result, ui
 	return 0;
 }
 
-int32_t send_json_to_Https(const char *server, const char *func, const char *json, char *result, uint32_t result_lenth)
+int32_t send_json_to_Https(const char *server, const char *func, const char *json, char *result, uint32_t result_length)
 {
-	return 0;	
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+    if(0 != access(g_ca_cert_file.c_str(), F_OK)){
+        printf("[Certificate File Not Exists] path :(%s)\n", g_ca_cert_file.c_str());
+        return -1;
+    }
+
+    httplib::SSLClient cli(server);
+    cli.set_ca_cert_path(g_ca_cert_file.c_str());
+    cli.enable_server_certificate_verification(true);
+	
+	int minResultLength = result_length;
+    
+    std::string content_type = "application/json";
+
+    std::string strfunc;
+    std::string body;
+
+    std::string resBody;
+    resBody.clear();
+
+    strfunc.clear();
+    strfunc.append(func);
+//    cout << strfunc << endl;
+
+    body.clear();
+    body.append(json);
+//    cout << body << endl;
+
+    /*
+     * Send data
+     */ 
+    if (auto res = cli.Post(strfunc.c_str(), body, content_type.c_str())) {
+        cout << res->status << endl;
+        cout << res->get_header_value("Content-Type") << endl;
+//        cout << res->body << endl;
+
+        if(200 == res->status)
+            resBody = res->body;
+    } else {
+        cout << "error code: " << res.error() << std::endl;
+    }
+
+    /*
+     * handle Response
+     */
+	if(resBody.empty())
+		return 0;
+
+	if(resBody.length() <= result_length){
+		minResultLength = resBody.length();
+	}
+
+	if(NULL == result)
+		return -1;
+
+	memcpy(result, resBody.c_str(), minResultLength);
+    
+	return 0;
+#else
+    printf("not support https version\n");
+	return -1;
+#endif
 }
 
-int32_t send_json_to_Http(const char *server, const char *func, const char *json, char *result, uint32_t result_lenth)
+int32_t send_json_to_Http(const char *server, const char *func, const char *json, char *result, uint32_t result_length)
 {
+    httplib::Client cli(server);
+	
+	int minResultLength = result_length;
+    
+    std::string content_type = "application/json";
+
+    std::string strfunc;
+    std::string body;
+
+    std::string resBody;
+    resBody.clear();
+
+    strfunc.clear();
+    strfunc.append(func);
+//    cout << strfunc << endl;
+
+    body.clear();
+    body.append(json);
+//    cout << body << endl;
+
+    /*
+     * Send data
+     */ 
+    if (auto res = cli.Post(strfunc.c_str(), body, content_type.c_str())) {
+        cout << res->status << endl;
+        cout << res->get_header_value("Content-Type") << endl;
+//        cout << res->body << endl;
+
+        if(200 == res->status)
+            resBody = res->body;
+    } else {
+        cout << "error code: " << res.error() << std::endl;
+    }
+
+    /*
+     * handle Response
+     */
+	if(resBody.empty())
+		return 0;
+
+	if(resBody.length() <= result_length){
+		minResultLength = resBody.length();
+	}
+
+	if(NULL == result)
+		return -1;
+
+	memcpy(result, resBody.c_str(), minResultLength);
+    
 	return 0;
 }
 
 int32_t get_file_from_https(const char *url, const char *func, const char *filePath)
-{	
+{
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
     httplib::SSLClient cli(url);
     cli.set_ca_cert_path(g_ca_cert_file.c_str());
