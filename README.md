@@ -46,8 +46,8 @@ important update log:
 > 	  * [new] iic
 > 	  * [new] touch screen
 > 	  * [new] watch dog timer
-> 	  * [update] camera (defalut output BGR888)
-> 	  * [update] display (defalut input BGR888)
+> 	  * [update] camera (default output BGR888)
+> 	  * [update] display (default input BGR888)
 > 	  * [update] pwm (more easy use)
 >
 > 2022-08-25 : 
