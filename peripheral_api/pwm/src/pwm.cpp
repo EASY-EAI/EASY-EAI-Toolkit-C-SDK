@@ -1,3 +1,17 @@
+/**
+ *
+ * Copyright 2022 by Guangzhou Easy EAI Technologny Co.,Ltd.
+ * website: www.easy-eai.com
+ *
+ * Author: CHM <chenhaiman@easy-eai.com>
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * License file for more details.
+ * 
+ */
+
 #include <iostream>
 #include <sstream>
 #include <memory>

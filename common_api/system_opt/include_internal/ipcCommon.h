@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include "print_msg.h"
 #include "system_opt.h"
 
 #define USING_INET 0
@@ -73,10 +74,13 @@ public:
     int32_t get_data_payloadSize(int32_t socketFd);
     int32_t get_data_fromChannel(int32_t socketFd, IPC_MSG_t *pMsg);
 
-    std::list<SocketChnData_t> mChannelList;
-
 private:
+    bool dataChannelIsFull(int32_t socketFd);
+    bool dataChannelIsEmpty(int32_t socketFd);
     void destroy_all_channel();
+    
+    pthread_rwlock_t chnMgrLock;
+    std::list<SocketChnData_t> mChannelList;
 };
 
 #endif //IPCCOMMON_H

@@ -192,40 +192,54 @@ void CvxText::putWChar(cv::Mat& img, wchar_t wc, cv::Point& pos, cv::Scalar colo
     pos.x += (int)((cols? cols: space) + sep);
 }
 
-static int ToWchar(char* &src, wchar_t* &dest, const char *locale)
+static void uniCode_to_Wchar(wchar_t *pWCharStr, char *pUniCodeStr, int32_t wCharSize)
+{
+	uint8_t *pWChar = (uint8_t *)pWCharStr;
+	uint8_t *pUniCode = (uint8_t *)pUniCodeStr;
+	
+	memset(pWChar, 0, wCharSize*sizeof(wchar_t));
+	for(int i = 0; i < wCharSize; i++){
+		*pWChar = *pUniCode;
+		pUniCode++; pWChar++;
+		
+		*pWChar = *pUniCode;
+		pUniCode++; pWChar += 3;
+	}	
+}
+static int ToWchar(const char* &src, wchar_t* &dest, const char *code)
 {
     if (src == NULL) {
         dest = NULL;
         return 0;
     }
- 
-    // 根据环境变量设置locale
-    char *res = setlocale(LC_CTYPE, locale);
-	if(!res){
-		printf("[%s] is unsupported by this system \n", locale);
-		return -1;
-	}
- 
-    // 得到转化为需要的宽字符大小
-    int w_size = mbstowcs(NULL, src, 0) + 1;
 	
-    // w_size = 0 说明mbstowcs返回值为-1。即在运行过程中遇到了非法字符(很有可能是locale没有设置正确)
-    if (w_size == 0) {
-        dest = NULL;
-        return -2;
-    }
- 
-    //wcout << "w_size" << w_size << endl;
-    dest = new wchar_t[w_size];
-    if (!dest) {
-        return -3;
-    }
- 
-    int ret = mbstowcs(dest, src, strlen(src)+1);
-    if (ret <= 0) {
-        return -4;
-    }
-    return 0;
+	int w_size = 0; //字符数量
+	if(0 == strcmp(code, CODE_UTF8)){
+		w_size = utf8_strlen(src) + 1;
+	}else if(0 == strcmp(code, CODE_GBK)){
+		w_size = 1;//gbk_strlen(src) + 1;
+	}
+	
+	// 每个UniCode占两个字节
+	char *pUniCodeStr = (char *)malloc(2*w_size);
+	
+	if(pUniCodeStr){
+		memset(pUniCodeStr, 0, 2*w_size);
+		if(0 == strcmp(code, CODE_UTF8)){
+			utf8_to_unicode(src, pUniCodeStr, 2*w_size/*uniCodeSize*/);
+		}else if(0 == strcmp(code, CODE_GBK)){
+			gbk_to_unicode(src, pUniCodeStr, 2*w_size/*uniCodeSize*/);
+		}
+		
+		dest = new wchar_t[w_size];
+		if(dest){
+			uniCode_to_Wchar(dest, pUniCodeStr, w_size);
+		}
+		free(pUniCodeStr);
+	}
+	
+	
+	return 0;
 }
 
 static uint64_t get_timeval_us()
@@ -243,30 +257,63 @@ static uint64_t get_timeval_ms()
 	return ((uint64_t)tv.tv_sec * 1000 + tv.tv_usec/1000);
 }
 
-char g_fontLib[128] = {0};   // 字体 [*.ttf]
-char g_charSet[64] = {0};   // 字符集 [zh_CN.utf8]
-uint32_t g_fontSize = 0;    // 字体大小
 
-int32_t font_engine_init(char *fontLibPath, char *charSet)
+Font_t *pg_Font = NULL;
+int32_t global_font_create(const char *fontLibPath, const char *codec)
 {
 	int charLen = 0;
 	
-	charLen = strlen(fontLibPath) >= (sizeof(g_fontLib)-1) ? (sizeof(g_fontLib)-1) : strlen(fontLibPath);
-	memcpy(g_fontLib, fontLibPath, charLen);
+	pg_Font = (Font_t *)malloc(sizeof(Font_t));
+	if(pg_Font){
+		memset(pg_Font, 0, sizeof(Font_t));
+		
+		charLen = strlen(fontLibPath) >= (sizeof(pg_Font->fontLib)-1) ? (sizeof(pg_Font->fontLib)-1) : strlen(fontLibPath);
+		memcpy(pg_Font->fontLib, fontLibPath, charLen);
+		
+		charLen = strlen(codec) >= (sizeof(pg_Font->textCodec)-1) ? (sizeof(pg_Font->textCodec)-1) : strlen(codec);
+		memcpy(pg_Font->textCodec, codec, charLen);
+		
+		return 0;
+	}
 	
-	charLen = strlen(charSet) >= (sizeof(g_charSet)-1) ? (sizeof(g_charSet)-1) : strlen(charSet);
-	memcpy(g_charSet, charSet, charLen);
-	
-	return 0;
+	return -1;
 }
 
-int32_t font_engine_set_fontSize(uint32_t fontSize)
+int32_t global_font_set_textCodec(const char *codec)
 {
-	g_fontSize = fontSize;
-	return 0;
+	int charLen = 0;
+	
+	if(pg_Font){
+		memset(pg_Font->textCodec, 0, sizeof(pg_Font->textCodec));
+		
+		charLen = strlen(codec) >= (sizeof(pg_Font->textCodec)-1) ? (sizeof(pg_Font->textCodec)-1) : strlen(codec);
+		memcpy(pg_Font->textCodec, codec, charLen);	
+		return 0;
+	}
+	return -1;
 }
 
-int32_t font_engine_putText(uint8_t *imgData, uint32_t imgWidth, uint32_t imgHeight, char *text, uint32_t posX, uint32_t posY, FontColor color)
+int32_t global_font_set_fontSize(uint32_t fontSize)
+{
+	if(pg_Font){
+		
+		pg_Font->fontSize = fontSize;		
+		return 0;
+	}
+	return -1;
+}
+
+int32_t global_font_destory()
+{	
+	if(pg_Font){
+		free(pg_Font);
+		pg_Font = NULL;
+		return 0;
+	}
+	return -1;
+}
+
+int32_t putText(uint8_t *imgData, uint32_t imgWidth, uint32_t imgHeight, const char *text, uint32_t posX, uint32_t posY, FontColor color)
 {	
 	cv::Mat image;
 
@@ -275,35 +322,30 @@ int32_t font_engine_putText(uint8_t *imgData, uint32_t imgWidth, uint32_t imgHei
 		return -1;
 	}
 	
-	if((0 == strlen(g_fontLib)) || (0 == strlen(g_charSet))){
+	if(!pg_Font){
+		printf("[error]: global font is not create \n");
+		return -1;
+	}
+	
+	if((0 == strlen(pg_Font->fontLib)) || (0 == strlen(pg_Font->textCodec))){
 		printf("[error]: font engine is not init \n");
 		return -1;
 	}
 	
 	image = cv::Mat(imgHeight, imgWidth, CV_8UC3, imgData);
 	
-	CvxText cvxText(g_fontLib);	//根据字库创建字体
+	CvxText cvxText(pg_Font->fontLib);	//根据字库创建字体
 	
-    cv::Scalar size1{ (double)g_fontSize, 0.5, 0.1, 0 }; // (字体大小, 无效的, 字符间距, 无效的 }
+    cv::Scalar size1{ (double)pg_Font->fontSize, 0.5, 0.1, 0 }; // (字体大小, 无效的, 字符间距, 无效的 }
 	float alpha = (float)color.Alpha/255;
     cvxText.setFont(nullptr, &size1, nullptr, &alpha);
 
     wchar_t *w_str;
-    int ret = ToWchar(text, w_str, g_charSet);
+    int ret = ToWchar(text, w_str, pg_Font->textCodec);
 	if(w_str){
-		cvxText.putText(image, w_str, cv::Point(posX, (posY+g_fontSize)), cv::Scalar(color.Bule, color.Green, color.Red));
+		cvxText.putText(image, w_str, cv::Point(posX, (posY+pg_Font->fontSize)), cv::Scalar(color.Bule, color.Green, color.Red));
 		delete [] w_str; 
 	}
-	
-	return 0;
-}
-
-
-int32_t font_engine_unInit()
-{	
-	memset(g_charSet, 0, sizeof(g_charSet));
-	
-	memset(g_fontLib, 0, sizeof(g_fontLib));
 	
 	return 0;
 }

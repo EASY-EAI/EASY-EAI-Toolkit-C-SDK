@@ -52,6 +52,7 @@
 #include <string>
 
 //======================================= system_opt =======================================
+#include "print_msg.h"
 #include "system_opt.h"
 
 using namespace std;
@@ -124,53 +125,6 @@ int32_t set_net_ipv4(const char *device, const char *ip, const char *mask, const
 /*********************************************************************
 Function:
 Description:
-    读取IP地址
-Example:
-	#define MAX_IP_LEN 20
-    char ip[MAX_IP_LEN];
-    if(0 == get_local_Ip("eth0", ip, MAX_IP_LEN)) {
-		printf("get ip succ\n");
-	}
-parameter:
-    *device : 网卡
-    *ip     : 用于存放读出来的ip地址
-    ip_len  : 用于存放ip地址的缓存长度
-Return:
-	-1：失败
-	0 ：成功
-********************************************************************/
-int32_t get_local_Ip(const char *device, char *ip, int ip_len)
-{
-    int sd;
-    struct sockaddr_in sin;
-    struct ifreq ifr;
-
-    memset(ip, 0, ip_len);
-    sd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (-1 == sd) {
-        printf("socket error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    strncpy(ifr.ifr_name, device, IFNAMSIZ);
-    ifr.ifr_name[IFNAMSIZ - 1] = 0;
-
-    if (ioctl(sd, SIOCGIFADDR, &ifr) < 0) {
-        printf("ioctl error: %s\n", strerror(errno));
-        close(sd);
-        return -1;
-    }
-
-    memcpy(&sin, &ifr.ifr_addr, sizeof(sin));
-    sprintf(ip, "%s", inet_ntoa(sin.sin_addr));
-
-    close(sd);
-    return 0;
-}
-
-/*********************************************************************
-Function:
-Description:
     读取 MAC 地址
 Example:
 	#define MAX_MAC_LEN 8
@@ -216,7 +170,144 @@ int32_t get_local_Mac(const char *device, char *mac, int mac_len)
 /*********************************************************************
 Function:
 Description:
-	把字符串形式的mac地址转换为数字形式
+    读取IP地址
+Example:
+	#define MAX_IP_LEN 20
+    char ip[MAX_IP_LEN];
+    if(0 == get_local_Ip("eth0", ip, MAX_IP_LEN)) {
+		printf("get ip succ\n");
+	}
+parameter:
+    *device : 网卡
+    *ip     : 用于存放读出来的ip地址
+    ip_len  : 用于存放ip地址的缓存长度
+Return:
+	-1：失败
+	0 ：成功
+********************************************************************/
+int32_t get_local_Ip(const char *device, char *ip, int ip_len)
+{
+    int sd;
+    struct sockaddr_in sin;
+    struct ifreq ifr;
+
+    memset(ip, 0, ip_len);
+    sd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (-1 == sd) {
+        PRINT_ERROR("socket error: %s", strerror(errno));
+        return -1;
+    }
+
+    strncpy(ifr.ifr_name, device, IFNAMSIZ);
+    ifr.ifr_name[IFNAMSIZ - 1] = 0;
+
+    if (ioctl(sd, SIOCGIFADDR, &ifr) < 0) {
+        PRINT_ERROR("ioctl error: %s", strerror(errno));
+        close(sd);
+        return -1;
+    }
+
+    memcpy(&sin, &ifr.ifr_addr, sizeof(sin));
+    sprintf(ip, "%s", inet_ntoa(sin.sin_addr));
+
+    close(sd);
+    return 0;
+}
+
+/*********************************************************************
+Function:
+Description:
+    读取子网掩码
+Example:
+	#define MAX_MASK_LEN 20
+    char netMask[MAX_MASK_LEN];
+    if(0 == get_local_NetMask("eth0", netMask, MAX_MASK_LEN)) {
+		printf("get netMask succ\n");
+	}
+parameter:
+    *device     : 网卡
+    *netMask    : 用于存放读出来的子网掩码
+    netMask_len : 用于存放子网掩码的缓存长度
+Return:
+	-1：失败
+	0 ：成功
+********************************************************************/
+int32_t get_local_NetMask(const char *device, char *netMask, int netMask_len)
+{ 
+    int sd;
+    struct sockaddr_in sin;
+    struct ifreq ifr;
+	
+    memset(netMask, 0, netMask_len);
+    sd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (-1 == sd) {
+        PRINT_ERROR("socket error: %s", strerror(errno));
+        return -1;
+    }
+    
+    ifr.ifr_addr.sa_family = AF_INET;
+    
+    strncpy(ifr.ifr_name, device, IFNAMSIZ);
+    ifr.ifr_name[IFNAMSIZ - 1] = 0;
+
+    if (ioctl(sd, SIOCGIFNETMASK, &ifr) < 0) {
+        PRINT_ERROR("ioctl error: %s", strerror(errno));
+        close(sd);
+        return -1;
+    }
+
+    memcpy(&sin, &ifr.ifr_addr, sizeof(sin));
+    sprintf(netMask, "%s", inet_ntoa(sin.sin_addr));
+
+    close(sd);
+	return 0;
+}
+
+/*********************************************************************
+Function:
+Description:
+    读取默认网关
+Example:
+	#define MAX_GW_LEN 20
+    char gateWay[MAX_GW_LEN];
+    if(0 == get_local_GateWay("eth0", gateWay, MAX_GW_LEN)) {
+		printf("get gateWay succ\n");
+	}
+parameter:
+    *device     : 网卡
+    *gateWay    : 用于存放读出来的默认网关
+    gateWay_len : 用于存放默认网关的缓存长度
+Return:
+	-1：失败
+	0 ：成功
+********************************************************************/
+int32_t get_local_GateWay(const char *device, char *gateWay, int gateWay_len)
+{
+    memset(gateWay, 0, gateWay_len);
+	
+	char cmd[128] = {0};
+    memset(cmd, 0, sizeof(cmd));
+    sprintf(cmd,"route|grep %s|grep default|awk \'{print $2}\'", device);
+    FILE* fp = popen( cmd, "r" );
+    if(NULL == fp) {
+        PRINT_ERROR("popen error: %s", strerror(errno));
+        return -1;
+    }
+    
+	while ( NULL != fgets(gateWay, gateWay_len, fp)) {
+        if(gateWay[strlen(gateWay)-1] == '\n') {
+           gateWay[strlen(gateWay)-1] = 0;
+        }
+        break;
+    }
+    pclose(fp);
+	return 0;
+}
+
+/*********************************************************************
+Function:
+Description:
+	把字符串形式的IP地址转换为数字形式
 Example:
 	char *strIP = "192.168.1.233";
 	char ipAddr[4] = {0};
@@ -357,7 +448,7 @@ uint64_t strToNetAddr(char *p_str)
 	struct in_addr addr = {0};
 	if(inet_pton(AF_INET, str, (void *)&addr) != 1)
 	{
-		printf("fun:%s, line:%d, failed!\n", __FUNCTION__, __LINE__);
+		PRINT_DEBUG("fun:%s, line:%d, failed!\n", __FUNCTION__, __LINE__);
 		return 0;
 	}
 	return addr.s_addr;
@@ -372,12 +463,12 @@ Example:
 parameter:
     无
 Return:
-	系统时间戳，单位：微秒
+	系统时间戳(UTC时间，没有进行时区偏移)，单位：微秒
 ********************************************************************/
 uint64_t get_timeval_us()
 {
-    struct timeval tv;	
-	gettimeofday(&tv, NULL);
+    struct timeval tv;
+	gettimeofday(&tv, NULL);	// UTC时间
 	
 	return ((uint64_t)tv.tv_sec * 1000000 + tv.tv_usec);
 }
@@ -391,12 +482,12 @@ Example:
 parameter:
     无
 Return:
-	系统时间戳，单位：毫秒
+	系统时间戳(UTC时间，没有进行时区偏移)，单位：毫秒
 ********************************************************************/
 uint64_t get_timeval_ms()
 {
-    struct timeval tv;	
-	gettimeofday(&tv, NULL);
+    struct timeval tv;
+	gettimeofday(&tv, NULL);	// UTC时间
 	
 	return ((uint64_t)tv.tv_sec * 1000 + tv.tv_usec/1000);
 }
@@ -410,12 +501,12 @@ Example:
 parameter:
     无
 Return:
-	系统时间戳，单位：秒
+	系统时间戳(UTC时间，没有进行时区偏移)，单位：秒
 ********************************************************************/
 uint64_t get_timeval_s()
 {
-    struct timeval tv;	
-	gettimeofday(&tv, NULL);
+    struct timeval tv;
+	gettimeofday(&tv, NULL);	// UTC时间
 	
 	return (uint64_t)tv.tv_sec;
 }
@@ -507,12 +598,12 @@ Example:
 parameter:
 	无
 Return:
-	系统当前时间戳
+	系统当前时间戳(UTC时间，没有进行时区偏移)
 ********************************************************************/
 int32_t get_time_stamp()
 {
 	time_t t;
-	t = time(NULL);
+	t = time(NULL);	// UTC时间
  
 	return time(&t);
 }
@@ -526,7 +617,7 @@ Example:
 	get_system_date_time(&curDate, &curTime);
 parameter:
     *curDate:当前日期
-    *curTime:当前时间
+    *curTime:当前时间(已做时区偏移)
 Return:
 	无
 ********************************************************************/
@@ -535,8 +626,8 @@ void get_system_date_time(uint32_t *curDate, uint32_t *curTime)
     time_t timer;//time_t就是long int 类型
     struct tm *tblock;
 
-    timer = time(NULL);
-    tblock = localtime(&timer);
+    timer = time(NULL);	// UTC时间
+    tblock = localtime(&timer); //获取本时区时间
 
 	*curDate = 10000 * (tblock->tm_year+1900) + 100 * (tblock->tm_mon + 1) + (tblock->tm_mday);
  	*curTime = 10000 * (tblock->tm_hour) + 100 * (tblock->tm_min) + (tblock->tm_sec);
@@ -552,7 +643,7 @@ parameter:
     year：年
      mon：月
      day：日
-    hour：时
+    hour：时(当前时区时间，无须额外进行时区偏移)
      min：分
     second：秒
 Return:
@@ -570,17 +661,17 @@ void set_system_date_time(int year, int mon, int day, int hour, int min, int sec
     t.tm_mon = mon-1;
     t.tm_mday = day;
 
-    t.tm_hour = hour;
+    t.tm_hour = hour;	// 填入本时区时间
     t.tm_min = min;
     t.tm_sec = second;
 
-	tStamp = mktime(&t);
+	tStamp = mktime(&t); // mktime返回值为UTC时间
     if(-1 == tStamp){
         perror("mktime");
     }else{
 		tv.tv_sec = tStamp;
 		tv.tv_usec = 0;
-		settimeofday(&tv, NULL);
+		settimeofday(&tv, NULL);	// UTC时间
 	}
 }
 
@@ -796,7 +887,14 @@ int32_t exec_cmd_by_popen(const char *cmd, char *result)
         ptr = NULL;
 		return 0;
     } else {
-        printf("popen %s error\n", ps);
+        PRINT_ERROR("popen %s error\n", ps);
 		return -1;
     }
 }
+
+int32_t (*SysOpt::gpF_outlog)(char const *filePath, int lineNum, char const *funcName, int logLevel, char const *logCon, va_list args) = NULL;
+void setSystemOpt_print(int32_t (*pFunc)(char const *filePath, int lineNum, char const *funcName, int logLevel, char const *logCon, va_list args))
+{
+    SysOpt::set_print_callback(pFunc);
+}
+

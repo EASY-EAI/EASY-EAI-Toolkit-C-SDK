@@ -11,6 +11,7 @@ If you first come into contact with this project. You can do:
 [reference the Quick Start Guide](https://www.easy-eai.com/document_details/3/133)
 
 If you have extensive experience in embedded C development. You can do:  
+[update the application development environment first](https://www.easy-eai.com/document_details/3/135)  
 [reference the API development manual](https://www.easy-eai.com/document_details/3/129)
 
 
@@ -23,6 +24,32 @@ How to use：
 
 important update log:
 ---
+> 2022-11-02 : 
+> * Release easyeai-api-0.2.1
+>   * algorithm_api
+> 	  * [new] fire_detect
+> 	  * [new] site_safety
+> 	  * [update] helmet_detect
+> 	  * [update] person_detect
+>   * common_api
+> 	  * [new] log manager (print to file or terminal can be specified)
+> 	  * [update] base64 (Fix the bug of memory leak)
+> 	  * [update] font engine (can write chinese on picture)
+> 	  * [update] ini wrapper (Put the dynamic library into tool chain)
+> 	  * [update] json parser (Improve api and Fix the bug of memory leak)
+> 	  * [update] Linux system operation (Fix some bug for IPC and Increase heartbeat mechanism)
+>   * media_api
+> 	  * [update] stream media encode & decode (Improve encoder)
+>   * netProtocol_api
+> 	  * [update] rtsp (add create rtsp server api)
+>   * peripheral_api
+> 	  * [new] iic
+> 	  * [new] touch screen
+> 	  * [new] watch dog timer
+> 	  * [update] camera (defalut output BGR888)
+> 	  * [update] display (defalut input BGR888)
+> 	  * [update] pwm (more easy use)
+>
 > 2022-08-25 : 
 > * Release easyeai-api-0.2.0
 >   * common_api

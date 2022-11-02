@@ -257,6 +257,60 @@ end:
     return subStr;
 }
 
+static std::string GetJSONListObj(const char * const contents, const char *section, int pos)
+{
+    const cJSON *data = NULL;
+    char *pObjStr = NULL;
+    std::string subStr;
+    subStr.clear();
+
+    cJSON *contents_json = cJSON_Parse(contents); //转成json数据
+    if(!contents_json){
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL) {
+            fprintf(stderr, "Error before: %s\n", error_ptr);
+        }
+        return subStr;
+    }
+
+    int listSize = 0;
+	cJSON *section_json;
+	cJSON *orderSub_json;
+	
+    section_json = cJSON_GetObjectItem(contents_json, section);
+    if(!section_json){
+        goto end;
+    }
+    
+	orderSub_json = cJSON_GetArrayItem(section_json, pos);
+    if(!orderSub_json){
+        goto end;
+    }
+
+    listSize = cJSON_GetArraySize(section_json);
+    if((0 == listSize) || (listSize <= pos)){
+        goto end;
+    }
+
+#if 0
+    data = cJSON_GetObjectItemCaseSensitive(orderSub_json, key);
+    if (cJSON_IsString(data)) {
+        subStr.append(data->valuestring);
+    }else{
+        printf("date is not string\n");
+    }
+#else
+    pObjStr = cJSON_Print(orderSub_json);
+    if(pObjStr){
+        subStr.append(pObjStr);
+        cJSON_free(pObjStr);
+    }
+#endif
+
+end:
+    cJSON_Delete(contents_json);
+    return subStr;
+}
 
 int32_t get_int32_from_json(const char *json_str, const char *key)
 {
@@ -349,6 +403,32 @@ int32_t get_list_size_from_json(const char *json_str, const char *list_key)
 	int32_t listSize;
 	listSize = (int32_t)GetJSONListSize(json_str, list_key);
 	return listSize;
+}
+
+int32_t get_object_from_list(const char *json_str, const char *list_name, int pos, char *data, uint32_t dataLen)
+{
+	uint32_t minDataLength = dataLen;
+	
+	std::string strContents;
+	strContents.clear();
+	
+	if((NULL == data) || (0 == dataLen))
+		return -1;
+	
+	strContents = GetJSONListObj(json_str, list_name, pos);
+	if(strContents.empty()){
+        printf("strContents is empty\n");
+		memset(data, 0, minDataLength);
+		minDataLength = 0;
+	}else{
+		if(strContents.length() <=dataLen){
+			minDataLength = strContents.length();
+		}
+		
+		memcpy(data, strContents.c_str(), minDataLength);
+	}
+	
+	return minDataLength;
 }
 
 int32_t get_int32_from_list(const char *json_str, const char *list_name, int pos, const char *key)
@@ -451,6 +531,23 @@ void  add_object_to_object3(void *pParentObj, const char * const subObjName, cha
     }
 }
 
+void *create_list_object()
+{
+    void *pObj = NULL;
+
+	cJSON *pContents = cJSON_CreateArray();
+    pObj = (void *)pContents;
+
+    return pObj;
+}
+
+void  add_item_to_list(void *pList, void *pItem)
+{
+    if((pList)&&(pItem)) {
+        cJSON_AddItemToArray((cJSON *)pList, (cJSON *)pItem);
+    }
+}
+
 void *add_list_to_object(void *pParentObj, const char * const listName)
 {
     void *pList = NULL;
@@ -464,10 +561,10 @@ void *add_list_to_object(void *pParentObj, const char * const listName)
     return pList;
 }
 
-void  add_item_to_list(void *pList, void *pItem)
-{
-    if((pList)&&(pItem)) {
-        cJSON_AddItemToArray((cJSON *)pList, (cJSON *)pItem);
+void add_list_to_object2(void *pParentObj, const char * const listName, void *pListObj)
+{  
+    if((NULL != pParentObj)&&(NULL != pListObj)) {
+        cJSON_AddItemToObject((cJSON *)pParentObj, listName, (cJSON *)pListObj);
     }
 }
 
@@ -477,6 +574,13 @@ char *object_data(void *pObject)
         return cJSON_Print((cJSON *)pObject);
     }else{
         return NULL;
+    }
+}
+
+void free_data(char *pData)
+{
+    if(pData){
+        cJSON_free(pData);
     }
 }
 

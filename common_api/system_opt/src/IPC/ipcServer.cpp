@@ -18,6 +18,59 @@ static const char *errorReason(eChnErr errnum)
 }
 
 /* ========================================= Thread ============================================ */
+void * monitorClientsThread(void *para)
+{
+    // 进程间通信对象
+	IPCServer_para_t *pIPCPara = (IPCServer_para_t *)para;
+    IPCServer *pSelf = pIPCPara->pSelf;
+    PRINT_DEBUG("ipc server monitorClientsThread create succ");
+    while(1)
+    {
+        // 对象已销毁
+        if(NULL == pIPCPara){ break; }
+        // IPCClient 未准备就绪
+        if(NULL == pSelf) {
+            usleep(10*1000);
+    	    continue;
+        }
+        
+        /* 遍历map */
+        pthread_mutex_lock(&pSelf->IDmap_lock);
+        std::map<int32_t, Client_ptr*>::iterator iter = pSelf->mId_SocketFd.begin();
+        while (iter != pSelf->mId_SocketFd.end())
+        {
+            /*判断是否心跳倒计时为0（设置标志，后续做反应）*/
+            if(0 == iter->second->timeout)
+            {
+                //ID_fd_map中剔除失效fd
+                free(iter->second);
+                iter->second = nullptr;
+                iter = pSelf->mId_SocketFd.erase(iter);
+                
+                // 销毁该链接的资源
+                int disable_fd = iter->second->clientFd;//心跳倒计时结束的fd
+                pSelf->destoryClientResource(disable_fd);
+                
+                PRINT_ERROR("[IPCServer]: Can not received client[%d(cliFd)] Heartbeat for a long time! destory related resources.", disable_fd);
+            }else{
+                /*心跳倒计时自减*/
+                iter->second->timeout--;
+                PRINT_TRACE("[IPCServer]: Client[%d(cliId)---(%d(cliFd), %d(timeOut))] countdown...", iter->first, iter->second->clientFd,iter->second->timeout);
+                iter++;
+            }
+        }
+        pthread_mutex_unlock(&pSelf->IDmap_lock);
+        sleep(1);
+    }
+    
+    PRINT_ERROR("[IPCServer]: --- exit monitorClientsThread !!! ---");
+    if(pIPCPara){
+        free(pIPCPara);
+        pIPCPara = NULL;
+    }
+	pthread_exit(NULL);
+}
+
 #define LISTENEVENT_NUM 10
 void *clientAcceptThread(void *para)
 {
@@ -27,7 +80,7 @@ void *clientAcceptThread(void *para)
 
     // 声明epoll_event结构体的变量, events[20]数组用于缓存被激活的事件信息, ev用于遍历events[20]数组。
     int nfds,i;
-    struct epoll_event events[LISTENEVENT_NUM], ev;
+    struct epoll_event events[LISTENEVENT_NUM];
 
     // 声明客户端变量，用于链接新建客户端
 #if USING_INET
@@ -45,7 +98,7 @@ void *clientAcceptThread(void *para)
 #endif
     int32_t cliSocketFd;
     
-    printf("ipc server clientAcceptThread create succ\n");
+    PRINT_DEBUG("ipc server clientAcceptThread create succ");
     while(1){
         // 对象已销毁
         if(NULL == pIPCPara){ break; }
@@ -72,10 +125,17 @@ void *clientAcceptThread(void *para)
 
         usleep(1000*1000);
 
+#if 0
+        // 问题：如果多个客户端同时来connect，这里只会处理一个。其它的都会被漏掉了
+        PRINT_DEBUG("[IPCServer]: Waitting Accept Client Number: %d ...", nfds);
         // 处理所有被激活的fd
         for(i = 0; i < nfds; ++i) {
             // 如果被激活的fd是listenFd
             if(events[i].data.fd == pSelf->mListenFd) {
+#else
+        while(1) {
+            if(1) {
+#endif
                 cliSocketFd = -1;
 #if USING_INET
                 cliSocketFd = accept(pSelf->mListenFd, (struct sockaddr*)&cliaddr, &len);
@@ -83,39 +143,32 @@ void *clientAcceptThread(void *para)
                 cliSocketFd = accept(pSelf->mListenFd, (struct sockaddr*)&cliaddr, &size);
             	cliaddr.sun_path[strlen(cliaddr.sun_path)] = 0;
             	if (stat(cliaddr.sun_path, &statbuf) < 0){
-            		printf("stat error");
+            		PRINT_ERROR("stat error");
             		//exit(1);
             	}
             	if (S_ISSOCK(statbuf.st_mode) == 0){
-            		printf("S_ISSOCK error");
+            		PRINT_ERROR("S_ISSOCK error");
             		//exit(1);
             	}
-                printf("########################### path =%s\n", cliaddr.sun_path);
+                
+                PRINT_DEBUG("socketPath(%s)", cliaddr.sun_path);
             	unlink(cliaddr.sun_path);
 #endif
                 if(cliSocketFd > 0){
-                    //printf("############################ accept %d ############################\n", cliSocketFd);
-                    // 则把新链接注册进 读写epoll
-                    ev.events  = EPOLLIN|EPOLLOUT; //读监听同时写监听，水平触发。
-                    ev.data.fd = cliSocketFd;
-                    epoll_ctl(pSelf->mepollFd, EPOLL_CTL_ADD, cliSocketFd, &ev);
-                    // 则把新链接的epoll工作模式记录下来
-                    pSelf->mSocketFd_Event.insert(std::pair<int32_t, uint32_t>(cliSocketFd, ev.events));
-                    // 则把Fd加入向量表
-                    pSelf->mSocketList.push_back(cliSocketFd);
-                    // 则给客户端创建一条读缓存通道
-                    pSelf->mpReadChnDataMgr->create_data_channel(cliSocketFd);
-                    // 则给客户端创建一条写缓存通道
-                    pSelf->mpWriteChnDataMgr->create_data_channel(cliSocketFd);
+                    PRINT_DEBUG("[IPCServer]: new client connect %d(cliFd)", cliSocketFd);
+                    // 给改链接分配资源
+                    pSelf->createClientResource(cliSocketFd);
                     // 注意：
                     //   1、读写缓存通道到与客户端链接关联。若客户端的链接已断开(心跳已停止)则也要销毁对应的读写缓存通道。
+                    PRINT_DEBUG("[IPCServer]: new client connected", cliSocketFd);
                 }
             }
+            usleep(100*1000);
         }
         
     }
 
-    printf("[IPCServer]: --- exit clientAcceptThread !!! ---\n");
+    PRINT_ERROR("[IPCServer]: --- exit clientAcceptThread !!! ---");
     if(pIPCPara){
         free(pIPCPara);
         pIPCPara = NULL;
@@ -129,14 +182,12 @@ void *channelDataTransmitThread(void *para)
 	IPCServer_para_t *pIPCPara = (IPCServer_para_t *)para;
     IPCServer *pSelf = pIPCPara->pSelf;
 
-    struct epoll_event ev;
-
     // 声明用于消息转发的相关参数
     IPC_MSG_t msg = {0};
     bool bIsAllChnEmpty = true;
     int32_t ret;
     int32_t srcClientFd, dstClientFd;
-    printf("ipc server channelDataTransmitThread create succ\n");
+    PRINT_DEBUG("ipc server channelDataTransmitThread create succ");
     while(1){
         // 对象已销毁
         if(NULL == pIPCPara){ break; }
@@ -148,6 +199,7 @@ void *channelDataTransmitThread(void *para)
 
         bIsAllChnEmpty = true;
         // 轮询读通道，把数据转移到写通道上
+        pthread_mutex_lock(&pSelf->mSocketList_lock);
         for(auto iter = pSelf->mSocketList.begin(); iter != pSelf->mSocketList.end(); iter++){
             
             srcClientFd = (*iter);
@@ -167,13 +219,8 @@ void *channelDataTransmitThread(void *para)
                     ret = pSelf->mpReadChnDataMgr->get_data_fromChannel(srcClientFd, &msg);
                     // 成功从读队列里取出一个节点
                     if(0 == ret){
-                        //打开读监听。
-                        //printf("[IPCServer]: ---open read listen, (src)%d---\n", srcClientFd);
-                        ev.events  = pSelf->getSocketEvents(srcClientFd);
-                        ev.events |= EPOLLIN; 
-                        ev.data.fd = srcClientFd;
-                        epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, srcClientFd, &ev);
-                        pSelf->setSocketFd_Events(srcClientFd, ev.events);
+                        PRINT_TRACE("[IPCServer]: ---get data from [Read] channel[%d(fd)] succ---", srcClientFd);
+                        pSelf->enableEpollEvent(srcClientFd, EPOLLIN);//打开读监听
 
                         // 获取目标通道
                         dstClientFd = pSelf->getDstSocketFd(msg.dstClientId);
@@ -189,47 +236,42 @@ void *channelDataTransmitThread(void *para)
                             // 为了减少memcpy次数，提高运行效率。则入列成功后msg.payload需要在get_data_fromChannel里面free掉。
                             ret = pSelf->mpWriteChnDataMgr->send_data_toChannel(dstClientFd, msg);
                             if(0 == ret){
-                                //printf("[IPCServer]: ---open write listen, (src)%d---\n", dstClientFd);
-                                ev.events  = pSelf->getSocketEvents(dstClientFd);
-                                ev.events |= EPOLLOUT; //打开写监听。
-                                ev.data.fd = dstClientFd;
-                                epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, dstClientFd, &ev);
-                                pSelf->setSocketFd_Events(dstClientFd, ev.events);
+                                PRINT_TRACE("[IPCServer]: ---trans data to [write] channel[%d(fd)] succ---", dstClientFd);
+                                pSelf->enableEpollEvent(dstClientFd, EPOLLOUT);//打开写监听
                             }else{
-                                printf("[IPCServer]: ---Send msg node to %d(fd) error, reason[%s]---\n", dstClientFd, errorReason((eChnErr)ret));
+                                PRINT_ERROR("[IPCServer]: ---send msg node to %d(fd) error, reason[%s]---", dstClientFd, errorReason((eChnErr)ret));
                                 free(msg.payload);
                             }
+                            
+                        // 目标客户端未注册，丢弃该包
                         }else{
-                            printf("[IPCServer]: ---Get dstClient(%d) Fd error---\n", msg.dstClientId);
+                            PRINT_ERROR("[IPCServer]: ---get dstClient %d(Id) error---", msg.dstClientId);
                             free(msg.payload);
                         }
                         
                     // 因为节点需要移交给写队列的，所以要取失败才能free
                     }else{
-                        printf("[IPCServer]: ---Get msg node from %d(fd) error, reason[%s]---\n", srcClientFd, errorReason((eChnErr)ret));
+                        PRINT_TRACE("[IPCServer]: ---get msg node from %d(fd) error, reason[%s]---", srcClientFd, errorReason((eChnErr)ret));
                         free(msg.payload);
                     }
                 }
 
             // 读通道为空
             }else{
-                //printf("[IPCServer]: ---open read listen, (src)%d---\n", srcClientFd);
-                ev.events  = pSelf->getSocketEvents(srcClientFd);
-                ev.events |= EPOLLIN; //打开读监听。
-                ev.data.fd = srcClientFd;
-                epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, srcClientFd, &ev);
-                pSelf->setSocketFd_Events(srcClientFd, ev.events);
+                PRINT_TRACE("[IPCServer]: ---[Read] channel[%d(fd)] is empty---", srcClientFd);
+                pSelf->enableEpollEvent(srcClientFd, EPOLLIN);//打开读监听
             }
             
         }
+        pthread_mutex_unlock(&pSelf->mSocketList_lock);
         
         // 所有通道都为空的情况下，不宜轮询过快，以免CPU耗尽
         if(bIsAllChnEmpty){
-            msleep(300);
+            msleep(200);
         }
     }
 
-    printf("[IPCServer]: --- exit channelDataTransmitThread !!! ---\n");
+    PRINT_ERROR("[IPCServer]: --- exit channelDataTransmitThread !!! ---");
     if(pIPCPara){
         free(pIPCPara);
         pIPCPara = NULL;
@@ -238,6 +280,7 @@ void *channelDataTransmitThread(void *para)
 }
 
 #define IPCEVENT_NUM 20
+#define heartbeat_time 10
 void *readDataFromClientThread(void *para)
 {
     // 进程间通信对象
@@ -246,13 +289,14 @@ void *readDataFromClientThread(void *para)
     
     // 声明epoll_event结构体的变量, events[20]数组用于缓存被激活的事件信息, ev用于遍历events[20]数组。
     int nfds,i;
-    struct epoll_event ev,events[IPCEVENT_NUM];
+    struct epoll_event events[IPCEVENT_NUM];
 
     // 声明用于消息转发的相关参数
     IPC_MSG_t msg = {0};
     int32_t ret;
     int32_t srcClientFd, dstClientFd;
-    printf("ipc server readDataFromClientThread create succ\n");
+
+    PRINT_DEBUG("ipc server readDataFromClientThread create succ");
     while(1){
         // 对象已销毁
         if(NULL == pIPCPara){ break; }
@@ -278,21 +322,32 @@ void *readDataFromClientThread(void *para)
          */
 
         //usleep(10*1000);
-
+        
+        PRINT_TRACE("[IPCServer]: Active Client Number: %d (include read & write)", nfds);
         // 处理所有被激活的fd
         for(i = 0; i < nfds; ++i) {
             
             // 如果被激活的fd是可读的
             if(events[i].events&EPOLLIN) {
+                PRINT_TRACE("[IPCServer]: Client %d(fd) is readable", events[i].data.fd);
                 // 若fd非法
                 if ( (srcClientFd = events[i].data.fd) < 0)
                     continue;
                 
                 ret = tcp_recv(srcClientFd, &msg, sizeof(msg));
                 // 容错处理:
-                if(0 == ret){
-                    // 去读下一个可读的fd
-                    usleep(200*1000);
+                if(ret < 0){
+                    // 读出错
+                    usleep(100*1000);
+                    continue;
+                }else if(0 == ret){
+                    // 对端已close 套接字
+                    PRINT_ERROR("[IPCServer]: ---Client[%d(fd)] had closed, I should release related resources---", srcClientFd);
+                    // 剔除ID map中失效的子项
+                    pSelf->delIdMapItemByFd(srcClientFd);
+                    // 销毁该链接的资源
+                    pSelf->destoryClientResource(srcClientFd);
+                    usleep(100*1000);
                     continue;
                 }
                 
@@ -302,80 +357,123 @@ void *readDataFromClientThread(void *para)
                     // 取出payload
                     ret = tcp_recv(srcClientFd, msg.payload, msg.msgLen);
                     if(ret != msg.msgLen){
-                        printf("[IPCServer]: ---Read a invalid Packet, From (src)%d---\n", srcClientFd);                        
+                        PRINT_ERROR("[IPCServer]: ---Read a invalid Packet, From srcClientFd(%d)---", srcClientFd);
                         free(msg.payload);
                         continue;
                     }
                     
                     if(CLIENT_REGISTER == msg.msgType){
                         // 注册客户端Id
-                        printf("[IPCServer]: ---Register clientId succ, <(ID)%d -- (Fd)%d>---\n", msg.srcClientId, srcClientFd);
-                        pSelf->mId_SocketFd.insert(std::pair<int32_t, int32_t>(msg.srcClientId, srcClientFd));
-                        free(msg.payload);
                         
+                        /* 查找是否为重连接，是则销毁旧链接资源 */
+                        int32_t needCloseFd = pSelf->getDstSocketFd(msg.srcClientId);
+                        if(0 < needCloseFd){
+                            // 剔除ID map中失效的子项
+                            pSelf->delIdMapItemById(msg.srcClientId);
+                            // 销毁该链接的资源
+                            pSelf->destoryClientResource(needCloseFd);
+                        }
+                        
+                        /* 建立连接,绑定ID-FD */
+                        pSelf->addIdMapItem(msg.srcClientId, srcClientFd);
+                        PRINT_DEBUG("[IPCServer]: ---Register clientId succ, <(ID)%d -- (Fd)%d>---", msg.srcClientId, srcClientFd);
+                        
+                        free(msg.payload);
+
                     }else if(CLIENT_HEARTBEAT == msg.msgType){
                         // 客户端给过来的心跳
-                        free(msg.payload);
+                        
+                        /* 应答标志 */
+                        bool bNeedToRespond = false;
+                        
+                        /* 遍历map，以重置心跳倒计时 */
+                        pthread_mutex_lock(&pSelf->IDmap_lock);
+                        std::map<int32_t, Client_ptr*>::iterator iter = pSelf->mId_SocketFd.begin();
+                        while (iter != pSelf->mId_SocketFd.end()) {
+                            //找到发送心跳的client_fd
+                            if(srcClientFd == iter->second->clientFd) {
+                                iter->second->timeout = heartbeat_time;//恢复默认倒计时
+                                bNeedToRespond = true;
+                                break;   
+                            }
+                            iter++;
+                        }
+                        pthread_mutex_unlock(&pSelf->IDmap_lock);
+                        
+                        /* 回复 */ 
+                        if(bNeedToRespond){
+                            // 为了减少memcpy次数，提高运行效率。则入列成功后msg.payload需要在get_data_fromChannel里面free掉。
+                            ret = pSelf->mpReadChnDataMgr->send_data_toChannel(srcClientFd, msg);
+                            if(0 == ret){
+                                PRINT_TRACE("[IPCServer]: --- CLIENT_HEARTBEAT --- Reply HB Packet to itSelf[%d(fd)]", srcClientFd);
+                                // 如果读缓存通道已满则关闭当前fd的读监听
+                                if(pSelf->mpReadChnDataMgr->data_channel_is_full(srcClientFd)){
+                                    PRINT_TRACE("[IPCServer]:  ---[Read] channel[%d(fd)] is full---", srcClientFd);
+                                    pSelf->disableEpollEvent(srcClientFd, EPOLLIN);//关闭读监听。
+                                }
+                            }else{
+                                PRINT_ERROR("[IPCServer]: ---Push msg node to ReadChannel-%d(Fd) error, reason[%s]---", srcClientFd, errorReason((eChnErr)ret));
+                                free(msg.payload);
+                            }
+                        }else{
+                            PRINT_ERROR("[IPCServer]: ---Can not found clinet: %d(Fd)---", srcClientFd);
+                            free(msg.payload);
+                        }
                         
                     }else if(CLIENT_QUERY == msg.msgType){
                         // 客户端A过来查询客户端B是否已注册
                         int32_t registedClientId;
                         memcpy(&registedClientId, msg.payload, sizeof(registedClientId));
+                        PRINT_DEBUG("[IPCServer]: ---CLIENT_QUERY---  clientA[%d(Id)] query clientB[%d(Id)]", msg.srcClientId, registedClientId);
                         // 获取目标通道
                         int32_t registedClientFd = pSelf->getDstSocketFd(registedClientId);
                         if(registedClientFd <= 0){
+                            PRINT_ERROR("[IPCServer]: ---Get dstClient(%d) SocketFd faild---", registedClientId);
                             memset(msg.payload, 0, msg.msgLen);
                         }
                         // 为了减少memcpy次数，提高运行效率。则入列成功后msg.payload需要在get_data_fromChannel里面free掉。
                         ret = pSelf->mpReadChnDataMgr->send_data_toChannel(srcClientFd, msg);
                         if(0 == ret){
+                            PRINT_TRACE("[IPCServer]: ---Reply Client Query Packet to itSelf, srcClientFd[%d]---", srcClientFd);
                             // 如果读缓存通道已满则关闭当前fd的读监听
                             if(pSelf->mpReadChnDataMgr->data_channel_is_full(srcClientFd)){
-                                //printf("[IPCServer]: ---Close read listen, (src)%d---\n", srcClientFd);
-                                ev.events  = pSelf->getSocketEvents(srcClientFd);
-                                ev.events &= ~EPOLLIN; //关闭读监听。
-                                ev.data.fd = srcClientFd;
-                                epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, srcClientFd, &ev);
-                                pSelf->setSocketFd_Events(srcClientFd, ev.events);
+                                PRINT_TRACE("[IPCServer]:  ---[Read] channel[%d(fd)] is full---", srcClientFd);
+                                pSelf->disableEpollEvent(srcClientFd, EPOLLIN);//关闭读监听。
                             }
                         }else{
+                            PRINT_ERROR("[IPCServer]: ---Push msg node to ReadChannel-%d(Fd) error, reason[%s]---", srcClientFd, errorReason((eChnErr)ret));
                             free(msg.payload);
                         }
                     }else{
-                        //printf("[IPCServer]: ---Push msg node to ReadChannel, [(src)%d >> (dst)%d]---\n", msg.srcClientId, msg.dstClientId);
+                        PRINT_DEBUG("[IPCServer]: ---Push msg node to ReadChannel, [(src)%d >> (dst)%d]---", msg.srcClientId, msg.dstClientId);
                         // 为了减少memcpy次数，提高运行效率。则入列成功后msg.payload需要在get_data_fromChannel里面free掉。
                         ret = pSelf->mpReadChnDataMgr->send_data_toChannel(srcClientFd, msg);
                         if(0 == ret){
                             // 如果读缓存通道已满则关闭当前fd的读监听
                             if(pSelf->mpReadChnDataMgr->data_channel_is_full(srcClientFd)){
-                                //printf("[IPCServer]: ---Close read listen, (src)%d---\n", srcClientFd);
-                                ev.events  = pSelf->getSocketEvents(srcClientFd);
-                                ev.events &= ~EPOLLIN; //关闭读监听。
-                                ev.data.fd = srcClientFd;
-                                epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, srcClientFd, &ev);
-                                pSelf->setSocketFd_Events(srcClientFd, ev.events);
+                                PRINT_TRACE("[IPCServer]: ---[Read] channel[%d(fd)] is full---", srcClientFd);
+                                pSelf->disableEpollEvent(srcClientFd, EPOLLIN);//关闭读监听。
                             }
                         }else{
-                            printf("[IPCServer]: ---Push msg node to ReadChannel-%d(Fd) error, reason[%s]---\n", srcClientFd, errorReason((eChnErr)ret));
+                            PRINT_ERROR("[IPCServer]: ---Push msg node to ReadChannel-%d(Fd) error, reason[%s]---", srcClientFd, errorReason((eChnErr)ret));
                             free(msg.payload);
                         }
                     }
                 }
+                // 此处控制一下频率，以免数据瞬间涌入通道
+                //usleep(5*1000);
             
             // 如果被激活的fd是可写的
             }else if(events[i].events&EPOLLOUT) {
+                PRINT_TRACE("[IPCServer]: Client %d(fd) is writable", events[i].data.fd);
                 // 若fd非法
                 if ( (dstClientFd = events[i].data.fd) < 0)
                     continue;
                 
                 // 如果写缓存通道已空则关闭目标fd的写监听
                 if(pSelf->mpWriteChnDataMgr->data_channel_is_empty(dstClientFd)){
-                    //printf("[IPCServer]: ---Close write listen, (src)%d---\n", dstClientFd);
-                    ev.events  = pSelf->getSocketEvents(dstClientFd);
-                    ev.events &= ~EPOLLOUT; //关闭写监听。
-                    ev.data.fd = dstClientFd;
-                    epoll_ctl(pSelf->mepollFd, EPOLL_CTL_MOD, dstClientFd, &ev);
-                    pSelf->setSocketFd_Events(dstClientFd, ev.events);
+                    PRINT_TRACE("[IPCServer]: ---[Write] channel[%d(fd)] is empty---", dstClientFd);
+                    pSelf->disableEpollEvent(dstClientFd, EPOLLOUT);//关闭写监听。
                 }else{
                     msg.msgLen = pSelf->mpWriteChnDataMgr->get_data_payloadSize(dstClientFd);
                     if(msg.msgLen <= 0)
@@ -386,10 +484,22 @@ void *readDataFromClientThread(void *para)
                     if(msg.payload){
                         ret = pSelf->mpWriteChnDataMgr->get_data_fromChannel(dstClientFd, &msg);
                         if(0 == ret){
-                            tcp_send(dstClientFd, &msg, sizeof(msg));
-                            tcp_send(dstClientFd, msg.payload, msg.msgLen);
+                            if(CLIENT_NUM <= msg.msgType){
+                                PRINT_DEBUG("[IPCServer]: ---Send data to dstClient, [(src)%d >> (dst)%d]---", msg.srcClientId, msg.dstClientId);
+                            }else{
+                                PRINT_TRACE("[IPCServer]: ---Send data to dstClient, [(src)%d >> (dst)%d]---", msg.srcClientId, msg.dstClientId);
+                            }
+                            pthread_mutex_lock(&pSelf->IDmap_lock);
+                            for(auto iter = pSelf->mId_SocketFd.begin(); iter != pSelf->mId_SocketFd.end();iter++){
+                                if(dstClientFd == iter->second->clientFd){
+                                	tcp_send(dstClientFd, &msg, sizeof(msg));
+                                	tcp_send(dstClientFd, msg.payload, msg.msgLen);
+                                    break;
+                                }
+                            }
+                            pthread_mutex_unlock(&pSelf->IDmap_lock);
                         }else{
-                            printf("[IPCServer]: ---Pop msg node from WriteChannel-%d(Fd) error, reason[%s]---\n", dstClientFd, errorReason((eChnErr)ret));
+                            PRINT_ERROR("[IPCServer]: ---Pop msg node from WriteChannel -- %d(Fd) error, reason[%s]---", dstClientFd, errorReason((eChnErr)ret));
                         }
                         free(msg.payload);
                     }
@@ -400,7 +510,7 @@ void *readDataFromClientThread(void *para)
 
     }
 
-    printf("[IPCServer]: --- exit readDataFromClientThread !!! ---\n");
+    PRINT_ERROR("[IPCServer]: --- exit readDataFromClientThread !!! ---");
     if(pIPCPara){
         free(pIPCPara);
         pIPCPara = NULL;
@@ -427,7 +537,17 @@ IPCServer::IPCServer() :
     memset(cmd, 0, sizeof(cmd));
     sprintf(cmd, "rm %s/*", AF_UNIX_IPC_CPATH);
     exec_cmd_by_system(cmd);
+
     
+	pthread_mutex_init(&mSocketList_lock, NULL);
+	
+    // 初始化客户端Fd--Events互斥锁
+	pthread_mutex_init(&mFdEvents_lock, NULL);
+    
+    // 初始化客户端Id map互斥锁
+	pthread_mutex_init(&IDmap_lock, NULL);
+    
+	// 创建读、写通道管理器
     mpReadChnDataMgr = new ChnDataMgr;
     mpWriteChnDataMgr = new ChnDataMgr;
 }
@@ -440,6 +560,12 @@ IPCServer::~IPCServer()
         delete mpReadChnDataMgr;
     if(mpWriteChnDataMgr)
         delete mpWriteChnDataMgr;
+    
+	pthread_mutex_destroy(&IDmap_lock);
+	
+	pthread_mutex_destroy(&mFdEvents_lock);
+	
+	pthread_mutex_destroy(&mSocketList_lock);
 }
 
 void IPCServer::createIPCServer()
@@ -459,6 +585,7 @@ void IPCServer::init( int32_t clientMaxNum, int32_t port)
 #else
 	mListenFd = socket(AF_UNIX, SOCK_STREAM, 0);
 #endif
+    PRINT_DEBUG("ListenFd: %d\n", mListenFd);
     /* 说明:
      * int socket(int domain, int type, int protocal)
      *  【domain】：
@@ -526,7 +653,7 @@ void IPCServer::init( int32_t clientMaxNum, int32_t port)
 #endif
 	if(ret == -1){
         close(mListenFd);
-		printf("bind faild! (errorMsg: %s)(errno: %d)\n", strerror(errno), errno);
+		PRINT_ERROR("bind faild! (errorMsg: %s)(errno: %d)", strerror(errno), errno);
     }
     /* 说明:
      * int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
@@ -578,7 +705,7 @@ void IPCServer::init( int32_t clientMaxNum, int32_t port)
      *          uint64_t u64;
      *      } epoll_data_t;
      */
-    mListenEpollFd = epoll_create(4);
+    mListenEpollFd = epoll_create(LISTENEVENT_NUM);
     ev.events = EPOLLIN|EPOLLET;   //当3次握手完成，如果不进行accept操作，那么内核只会通知一次
     ev.data.fd = mListenFd;
     epoll_ctl(mListenEpollFd, EPOLL_CTL_ADD, mListenFd, &ev);
@@ -588,7 +715,7 @@ void IPCServer::init( int32_t clientMaxNum, int32_t port)
 
 	IPCServer_para_t *pIPCPara = (IPCServer_para_t *)malloc(sizeof(IPCServer_para_t));	 
 	pIPCPara->pSelf = this;
-    mSocketFd_Event.clear();
+    mSocketFd_Events.clear();
     mId_SocketFd.clear();
 	// 创建监听"添加客户端"线程
 	if(0 != CreateNormalThread(clientAcceptThread, pIPCPara, &mAcceptTid)){
@@ -601,7 +728,13 @@ void IPCServer::init( int32_t clientMaxNum, int32_t port)
         return ;
 	}
 	// 创建读端-写端转发线程
-	if(0 != CreateNormalThread(channelDataTransmitThread, pIPCPara, &mReadTid)){
+	if(0 != CreateNormalThread(channelDataTransmitThread, pIPCPara, &mTransmitTid)){
+		free(pIPCPara);
+        return ;
+	}
+
+    // 创建客户端心跳监测线程
+	if(0 != CreateNormalThread(monitorClientsThread, pIPCPara, &mMonitorTid)){
 		free(pIPCPara);
         return ;
 	}
@@ -621,6 +754,7 @@ void IPCServer::unInit()
     struct epoll_event ev;
     int socketFd;
     
+    pthread_mutex_lock(&mSocketList_lock);
     for(auto iter = mSocketList.begin(); iter != mSocketList.end(); iter++){
         
         socketFd = (*iter);
@@ -629,11 +763,16 @@ void IPCServer::unInit()
             // 关闭epoll监听
             ev.data.fd = socketFd;
             epoll_ctl(mepollFd, EPOLL_CTL_DEL, socketFd, &ev);
+            delSocketFd_Events(socketFd);// 移除待关闭链接epoll工作模式记录
+            // 销毁读写通道
+            mpReadChnDataMgr->destroy_data_channel(socketFd);
+            mpWriteChnDataMgr->destroy_data_channel(socketFd);
             // 关闭链接
             close(socketFd);
         }
     }
     mSocketList.clear();
+    pthread_mutex_unlock(&mSocketList_lock);
     
     if(mepollFd > 0){
         close(mepollFd);
@@ -649,17 +788,172 @@ void IPCServer::unInit()
     }
 }
 
-int32_t IPCServer::getDstSocketFd(int32_t id)
+bool IPCServer::createClientResource(int32_t socketFd)
+{
+    struct epoll_event ev;
+
+    // 1.创建读写通道
+    mpReadChnDataMgr->create_data_channel(socketFd);// 给客户端创建一条读缓存通道
+    mpWriteChnDataMgr->create_data_channel(socketFd);// 给客户端创建一条写缓存通道
+    
+    // 2.把新链接注册进 读写epoll
+    ev.events  = EPOLLIN|EPOLLOUT; //读监听同时写监听，水平触发。
+    ev.data.fd = socketFd;
+    epoll_ctl(mepollFd, EPOLL_CTL_ADD, socketFd, &ev);
+    addSocketFd_Events(socketFd, ev.events);// 把新链接的epoll工作模式记录下来
+    
+    // 3.把Fd加入向量表
+    addSocketFdInList(socketFd);
+    
+    return true;
+}
+
+bool IPCServer::destoryClientResource(int32_t socketFd)
+{
+    // 从通信转发list中剔除
+    delSocketFdFromList(socketFd);
+
+    // 关闭epoll监听
+    struct epoll_event ev;
+    ev.data.fd = socketFd;
+    epoll_ctl(mepollFd, EPOLL_CTL_DEL, socketFd, &ev);// 关闭epoll监听
+    delSocketFd_Events(socketFd);// 移除待关闭链接epoll工作模式记录
+
+    // 销毁读写通道
+    mpReadChnDataMgr->destroy_data_channel(socketFd);
+    mpWriteChnDataMgr->destroy_data_channel(socketFd);
+    
+    // 关闭链接
+    close(socketFd);
+    return true;
+}
+
+bool IPCServer::enableEpollEvent(int32_t socketFd, uint32_t event)
+{
+    if(EPOLLIN == event){
+        PRINT_TRACE("[IPCServer]: ---open client[%d(Fd)] read listen---", socketFd);
+    }else if(EPOLLOUT == event){
+        PRINT_TRACE("[IPCServer]: ---open client[%d(Fd)] write listen---", socketFd);
+    }
+    
+    struct epoll_event ev;
+    ev.events  = getSocketEvents(socketFd);
+    ev.events |= event; 
+    ev.data.fd = socketFd;
+    epoll_ctl(mepollFd, EPOLL_CTL_MOD, socketFd, &ev);
+    setSocketFd_Events(socketFd, ev.events);
+
+    return true;
+}
+
+bool IPCServer::disableEpollEvent(int32_t socketFd, uint32_t event)
+{
+    if(EPOLLIN == event){
+        PRINT_TRACE("[IPCServer]: ---close client[%d(Fd)] read listen---", socketFd);
+    }else if(EPOLLOUT == event){
+        PRINT_TRACE("[IPCServer]: ---close client[%d(Fd)] write listen---", socketFd);
+    }
+    
+    struct epoll_event ev;
+    ev.events  = getSocketEvents(socketFd);
+    ev.events &= ~event; //关闭读监听。
+    ev.data.fd = socketFd;
+    epoll_ctl(mepollFd, EPOLL_CTL_MOD, socketFd, &ev);
+    setSocketFd_Events(socketFd, ev.events);
+    
+    return true;
+}
+
+int32_t IPCServer::getDstSocketFd(int32_t cliId)
 {
     int32_t socketFd = -1;
-
-    std::map<int32_t, int32_t>::iterator iter;
-    iter = mId_SocketFd.find(id);
+    pthread_mutex_lock(&IDmap_lock);
+    auto iter = mId_SocketFd.find(cliId);
     if(iter != mId_SocketFd.end()) {
-        socketFd = iter->second;
+        socketFd = iter->second->clientFd;
     }
-
+    pthread_mutex_unlock(&IDmap_lock);
     return socketFd;
+}
+
+void IPCServer::addIdMapItem(int32_t cliId, int32_t socketFd)
+{
+    pthread_mutex_lock(&IDmap_lock);
+    Client_ptr *clt_ptr = (Client_ptr *)malloc(sizeof(Client_ptr));
+    if(clt_ptr){
+        clt_ptr->clientFd = socketFd;
+        clt_ptr->timeout = heartbeat_time; //心跳默认时间（秒）
+        mId_SocketFd.insert(std::pair<int32_t, Client_ptr*>(cliId, clt_ptr));
+    }
+    pthread_mutex_unlock(&IDmap_lock);
+}
+
+void IPCServer::delIdMapItemById(int32_t cliId)
+{
+    pthread_mutex_lock(&IDmap_lock);
+    auto iter = mId_SocketFd.find(cliId);
+    if(iter != mId_SocketFd.end()) {
+        free(iter->second);
+        iter->second = nullptr;
+        mId_SocketFd.erase(iter);
+    }
+    pthread_mutex_unlock(&IDmap_lock);
+}
+
+void IPCServer::delIdMapItemByFd(int32_t socketFd)
+{
+    pthread_mutex_lock(&IDmap_lock);
+    for(auto iter = mId_SocketFd.begin(); iter != mId_SocketFd.end();){
+        if(socketFd == iter->second->clientFd){
+            free(iter->second);
+            iter->second = nullptr;
+            iter = mId_SocketFd.erase(iter);
+        }else{
+            iter++;
+        }
+    }
+    pthread_mutex_unlock(&IDmap_lock);
+}
+
+bool IPCServer::addSocketFdInList(int32_t socketFd)
+{
+    pthread_mutex_lock(&mSocketList_lock);
+    mSocketList.push_back(socketFd);
+    pthread_mutex_unlock(&mSocketList_lock);
+
+    return true;
+}
+
+bool IPCServer::delSocketFdFromList(int32_t socketFd)
+{
+    pthread_mutex_lock(&mSocketList_lock);
+    mSocketList.remove(socketFd);
+    pthread_mutex_unlock(&mSocketList_lock);
+
+    return true;
+}
+
+bool IPCServer::addSocketFd_Events(int32_t socketFd, uint32_t events)
+{
+    std::map<int32_t, uint32_t>::iterator iter;
+    pthread_mutex_lock(&mFdEvents_lock);
+    iter = mSocketFd_Events.find(socketFd);
+    if(iter != mSocketFd_Events.end()) {
+        // 存在则修改
+        iter->second = events;
+    }else{
+        // 不存在则新增
+        mSocketFd_Events.insert(std::pair<int32_t, uint32_t>(socketFd, events));
+    }
+    pthread_mutex_unlock(&mFdEvents_lock);
+    return true;
+}
+bool IPCServer::delSocketFd_Events(int32_t socketFd)
+{
+    //好像是否实现“删除socketFd-Events对”也无所谓
+    pthread_mutex_lock(&mFdEvents_lock);
+    pthread_mutex_unlock(&mFdEvents_lock);
+    return true;
 }
 
 uint32_t IPCServer::getSocketEvents(int32_t socketFd)
@@ -667,21 +961,26 @@ uint32_t IPCServer::getSocketEvents(int32_t socketFd)
     uint32_t events = 0;
 
     std::map<int32_t, uint32_t>::iterator iter;
-    iter = mSocketFd_Event.find(socketFd);
-    if(iter != mSocketFd_Event.end()) {
+    pthread_mutex_lock(&mFdEvents_lock);
+    iter = mSocketFd_Events.find(socketFd);
+    if(iter != mSocketFd_Events.end()) {
         events = iter->second;
     }
+    pthread_mutex_unlock(&mFdEvents_lock);
 
     return events;
 }
 void IPCServer::setSocketFd_Events(int32_t socketFd, uint32_t events)
 {
     std::map<int32_t, uint32_t>::iterator iter;
-    iter = mSocketFd_Event.find(socketFd);
-    if(iter != mSocketFd_Event.end()) {
+    pthread_mutex_lock(&mFdEvents_lock);
+    iter = mSocketFd_Events.find(socketFd);
+    if(iter != mSocketFd_Events.end()) {
         iter->second = events;
     }
+    pthread_mutex_unlock(&mFdEvents_lock);
 }
+
 
 int32_t IPC_server_create(int clientMaxNum)
 {
@@ -692,7 +991,7 @@ int32_t IPC_server_create(int clientMaxNum)
         IPCServer::instance()->init(clientMaxNum);
         ret = 0;
     }
-    printf("ipc server create succ\n");
+    PRINT_DEBUG("ipc server create succ\n");
     return ret;
 }
 
