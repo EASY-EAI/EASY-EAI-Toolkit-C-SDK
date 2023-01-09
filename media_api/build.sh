@@ -2,7 +2,13 @@
 
 set -e
 
-api_list=`ls -I "build*" -I "output"`
+# 前置库列表：需要被后面的库依赖，因此这些库需要提前编译
+preLib_list="frame_queue"
+
+# 后置库列表：需要依赖前置的库，因此编译顺序靠后
+postLib_list=`ls -I "build*" -I "output" -I "frame_queue"`
+
+api_list="$preLib_list $postLib_list"
 
 usage()
 {

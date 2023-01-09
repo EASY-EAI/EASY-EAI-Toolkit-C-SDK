@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.10.2)
 
 STRING(REGEX REPLACE ".*/(.*)" "\\1" CURRENT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR})
 MESSAGE("current project: " ${CURRENT_FOLDER})
+project(${CURRENT_FOLDER})
 
 set(CMAKE_SYSTEM_NAME Linux)
 
@@ -22,8 +23,6 @@ else()
 	set(HOST_DIR "${gcc_full_dir}/..")
 	set(CMAKE_TOOLCHAIN_FILE "${HOST_DIR}/share/buildroot/toolchainfile.cmake")
 endif()
-
-project(${CURRENT_FOLDER})
 
 # use c++ 11
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")

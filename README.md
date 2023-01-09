@@ -24,6 +24,29 @@ How to use：
 
 important update log:
 ---
+> 2023-01-09 : 
+> * Release easyeai-api-0.2.2
+>   * algorithm_api
+> 	  * [new] body_pose_detect
+> 	  * [new] face_landmark98
+> 	  * [new] face_mask_judgement
+> 	  * [new] face_pose_estimation
+> 	  * [new] moving_detect
+> 	  * [update] fire_detect
+> 	  * [update] helmet_detect
+> 	  * [update] person_detect
+> 	  * [del] site_safety
+>   * common_api
+> 	  * [update] Linux system operation (move network parameter to peripheral_api)
+>   * media_api
+> 	  * [update] stream media encode & decode (Unbinding decoder and frame queue)
+>   * netProtocol_api
+> 	  * [update] rtsp (modify rtsp server: Input with hook function)
+>   * peripheral_api
+> 	  * [new] network
+> 	  * [new] spi
+> 	  * [del] socket
+>
 > 2022-11-02 : 
 > * Release easyeai-api-0.2.1
 >   * algorithm_api

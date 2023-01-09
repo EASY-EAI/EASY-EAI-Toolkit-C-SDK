@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.10.2)
 
 STRING(REGEX REPLACE ".*/(.*)" "\\1" CURRENT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR})
 MESSAGE("current project: " ${CURRENT_FOLDER})
+project(${CURRENT_FOLDER})
 
 set(CMAKE_SYSTEM_NAME Linux)
 
@@ -23,11 +24,12 @@ else()
 	set(CMAKE_TOOLCHAIN_FILE "${HOST_DIR}/share/buildroot/toolchainfile.cmake")
 endif()
 
-project(${CURRENT_FOLDER})
+
+add_definitions(-Wall)
 
 # use c++ 11
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -DCPPHTTPLIB_OPENSSL_SUPPORT")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -DCPPHTTPLIB_OPENSSL_SUPPORT")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC")
 
 ## 头文件
 set(api_inc include/)
