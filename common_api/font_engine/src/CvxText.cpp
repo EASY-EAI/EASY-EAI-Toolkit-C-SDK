@@ -242,22 +242,6 @@ static int ToWchar(const char* &src, wchar_t* &dest, const char *code)
 	return 0;
 }
 
-static uint64_t get_timeval_us()
-{
-    struct timeval tv;	
-	gettimeofday(&tv, NULL);
-	
-	return ((uint64_t)tv.tv_sec * 1000000 + tv.tv_usec);
-}
-static uint64_t get_timeval_ms()
-{
-    struct timeval tv;	
-	gettimeofday(&tv, NULL);
-	
-	return ((uint64_t)tv.tv_sec * 1000 + tv.tv_usec/1000);
-}
-
-
 Font_t *pg_Font = NULL;
 int32_t global_font_create(const char *fontLibPath, const char *codec)
 {

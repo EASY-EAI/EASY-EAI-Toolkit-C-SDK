@@ -24,6 +24,13 @@ How to use：
 
 important update log:
 ---
+> 2023-03-31 : 
+> * Release easyeai-api-1.0.0
+>   * Adapting ubuntu firmware
+>   * Incompatible buildroot firmware
+>   * The sdk of the buildroot version is stored in the buildroot branch of this repository
+>   * common_api can be referenced by algorithm_api, media_api, netProtocol_api, and peripheral_api(Remember to append the common_api library reference of the document when calling)
+>
 > 2023-01-09 : 
 > * Release easyeai-api-0.2.2
 >   * algorithm_api

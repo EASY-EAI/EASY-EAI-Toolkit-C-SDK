@@ -5,38 +5,40 @@ MESSAGE("current project: " ${CURRENT_FOLDER})
 project(${CURRENT_FOLDER})
 
 set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_CROSSCOMPILING TRUE)
 
 cmake_host_system_information(RESULT arch_value QUERY OS_PLATFORM)
 message(STATUS "architecture: " ${arch_value})
 
-if("${arch_value}" STREQUAL "armv7l")
-	set(CMAKE_C_COMPILER "gcc")
-	set(CMAKE_CXX_COMPILER "g++")
-else()
-	set(CMAKE_CROSSCOMPILING TRUE)
-	set(CMAKE_C_COMPILER "arm-linux-gnueabihf-gcc")
-	set(CMAKE_CXX_COMPILER "arm-linux-gnueabihf-g++")
-
-	# find host dir and set CMAKE_TOOLCHAIN_FILE before call project
-	execute_process(COMMAND which ${CMAKE_C_COMPILER} OUTPUT_VARIABLE gcc_full_path)
-	get_filename_component(gcc_full_dir ${gcc_full_path} DIRECTORY)
-	set(HOST_DIR "${gcc_full_dir}/..")
-	set(CMAKE_TOOLCHAIN_FILE "${HOST_DIR}/share/buildroot/toolchainfile.cmake")
+## 编译工具链
+if(NOT "${arch_value}" STREQUAL "armv7l")
+	include ($ENV{HOME}/configs/cross.cmake)
 endif()
 
+## 编译配置
 # use c++ 11
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC")
+add_definitions(-Wall)
 
-# 源文件
-file(GLOB file_source src/*.c)
+set(commonApi_root ${CMAKE_CURRENT_SOURCE_DIR}/../)
+## 依赖的头文件
+set(api_inc 
+	${CMAKE_SYSROOT}/usr/include/drm/ 
+	${CMAKE_CURRENT_SOURCE_DIR}/include/ 
+)
+include_directories(${PROJECT_NAME} PUBLIC ${api_inc})
+
+## 依赖的动态库文件
+set(sysLib_list pthread)
+## 依赖的静态库文件
+file(GLOB file_obj ../build/*.o)
+set(staticLib_objs ${file_obj})
+
+## 依赖的源文件
+file(GLOB file_source src/*.c src/*.cpp)
 set(source ${file_source})
-add_library(${PROJECT_NAME} STATIC ${source})
 
-# 头文件
-set(api_inc
-	${CMAKE_CURRENT_SOURCE_DIR}/include
-	)
-include_directories(${PROJECT_NAME} ${api_inc})
-
-target_link_libraries(${PROJECT_NAME} pthread)
+## 目标静态库
+add_library(${PROJECT_NAME} STATIC ${source} ${staticLib_objs})
+target_link_libraries(${PROJECT_NAME} ${sysLib_list})

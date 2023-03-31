@@ -1,29 +1,45 @@
 cmake_minimum_required(VERSION 2.8.4)
 
-STRING(REGEX REPLACE ".*/(.*)" "\\1" CURRENT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR} )
+STRING(REGEX REPLACE ".*/(.*)" "\\1" CURRENT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR})
 MESSAGE("current project: " ${CURRENT_FOLDER})
-project(${CURRENT_FOLDER})
-
-
 
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_CROSSCOMPILING TRUE)
 
-set(CMAKE_C_COMPILER "arm-linux-gnueabihf-gcc")
-set(CMAKE_CXX_COMPILER "arm-linux-gnueabihf-g++")
+cmake_host_system_information(RESULT arch_value QUERY OS_PLATFORM)
+message(STATUS "architecture: " ${arch_value})
 
+## 编译工具链
+if(NOT "${arch_value}" STREQUAL "armv7l")
+	include ($ENV{HOME}/configs/cross.cmake)
+endif()
+project(${CURRENT_FOLDER})
+
+## 编译配置
 # use c++ 11
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -DCPPHTTPLIB_OPENSSL_SUPPORT")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -DCPPHTTPLIB_OPENSSL_SUPPORT")
 
-## 头文件
+set(commonApi_root ${CMAKE_CURRENT_SOURCE_DIR}/../../easyeai-api/common_api)
+## 依赖的头文件
 set(api_inc include/)
+include_directories(${PROJECT_NAME} PUBLIC ${api_inc})
 
-file(GLOB file_source src/*.cpp)
+## 依赖的动态库文件
+set(sysLib_list 
+	pthread 
+	ssl 
+	crypto 
+)
+## 依赖的静态库文件
+
+file(GLOB file_obj ../build/*.o)
+set(staticLib_objs ${file_obj})
+
+## 依赖的源文件
+file(GLOB file_source src/*.c src/*.cpp)
 set(source ${file_source})
 
-add_library(${PROJECT_NAME} STATIC ${source})
-include_directories(${PROJECT_NAME} PUBLIC ${api_inc})
-target_link_libraries(${PROJECT_NAME} -lpthread 
-    -lssl 
-	-lcrypto)
+## 目标静态库
+add_library(${PROJECT_NAME} STATIC ${source} ${decryption_lib} ${hardware_verify_lib} ${staticLib_objs})
+target_link_libraries(${PROJECT_NAME} ${sysLib_list})

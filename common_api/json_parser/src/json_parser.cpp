@@ -312,6 +312,26 @@ end:
     return subStr;
 }
 
+bool string_is_json_object(const char *json_str)
+{
+    if(NULL == json_str)
+        return false;
+
+    if(!(0 < strlen(json_str)))
+        return false;
+
+    cJSON *pJSONObj = cJSON_Parse(json_str); //转成json数据
+    if(NULL == pJSONObj)
+        return false;
+
+    if(cJSON_IsObject(pJSONObj)||cJSON_IsArray(pJSONObj)){
+        return true;
+    }else{
+        return false;
+    }
+}
+
+
 int32_t get_int32_from_json(const char *json_str, const char *key)
 {
 	int32_t retValue;
@@ -525,10 +545,42 @@ void  add_object_to_object3(void *pParentObj, const char * const subObjName, cha
 {
     if(pParentObj) {
         cJSON *pSubObj = cJSON_Parse(pSubObjSrt);
-        if(false == cJSON_AddItemToObject((cJSON *)pParentObj, subObjName, (cJSON *)pSubObj)) {
-            cJSON_Delete(pSubObj);
+        if(pSubObj){
+            if(false == cJSON_AddItemToObject((cJSON *)pParentObj, subObjName, (cJSON *)pSubObj)) {
+                cJSON_Delete(pSubObj);
+            }
+        }else{
+            printf("SubObjSrt is invaild json\n");
         }
     }
+}
+
+void *create_item_object(const char *contents)
+{
+    void *pObj = NULL;
+    cJSON *pContents = NULL;
+
+    bool bNeedCreateEmptyObj = true;
+    if(contents){
+        if(0 <= strlen(contents)){
+            bNeedCreateEmptyObj = false;
+        }
+    }
+
+    if(bNeedCreateEmptyObj){
+	    pContents = cJSON_CreateObject();
+    }else{
+        pContents = cJSON_Parse(contents); //转成json数据
+        if(NULL == pContents){
+            const char *error_ptr = cJSON_GetErrorPtr();
+            if (error_ptr != NULL) {
+                fprintf(stderr, "Error before: %s\n", error_ptr);
+            }
+        }
+    }
+    pObj = (void *)pContents;
+
+    return pObj;
 }
 
 void *create_list_object()
@@ -568,10 +620,18 @@ void add_list_to_object2(void *pParentObj, const char * const listName, void *pL
     }
 }
 
-char *object_data(void *pObject)
+char *object_data(void *pObject, bool bIsUnformatted)
 {
     if(pObject){
-        return cJSON_Print((cJSON *)pObject);
+        if (cJSON_IsObject((cJSON *)pObject)||cJSON_IsArray((cJSON *)pObject)) {
+            if(bIsUnformatted){
+                return cJSON_PrintUnformatted((cJSON *)pObject);
+            }else{
+                return cJSON_Print((cJSON *)pObject);
+            }
+        }else{
+            return NULL;
+        }
     }else{
         return NULL;
     }

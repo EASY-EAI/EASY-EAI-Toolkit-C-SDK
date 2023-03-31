@@ -9,8 +9,12 @@ project(${CURRENT_FOLDER})
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_CROSSCOMPILING TRUE)
 
-set(CMAKE_C_COMPILER "arm-linux-gnueabihf-gcc")
-set(CMAKE_CXX_COMPILER "arm-linux-gnueabihf-g++")
+cmake_host_system_information(RESULT arch_value QUERY OS_PLATFORM)
+message(STATUS "architecture: " ${arch_value})
+
+if(NOT "${arch_value}" STREQUAL "armv7l")
+	include ($ENV{HOME}/configs/cross.cmake)
+endif()
 
 # use c++ 11
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC ")

@@ -19,8 +19,6 @@
 
 using namespace std;
 
-
-
 /*
 功能：打开iic设备文件
 参数：path（设备文件路径）
@@ -32,7 +30,7 @@ int32_t iic_init(const char  *path)
     fd = open(path, O_RDWR);
     if (fd < 0) {
         perror("open i2c\n");
-        exit(-1);
+		return false;
     }
     return fd;
 }
@@ -48,12 +46,10 @@ bool iic_release(int32_t mfd)
     int ret = close(mfd);
     if (ret < 0) {
         perror("close i2c\n");
-        exit(-1);
+		return false;
     }
     return true;
 }
-
-
 
 /*
 功能：设置从机地址长度
@@ -71,7 +67,7 @@ bool iic_set_addr_len(int32_t mfd,int32_t len = 7)
     int ret =ioctl(mfd, I2C_TENBIT, par);
     if(ret < 0){
         perror("set addr_len");
-        exit(-1);
+		return false;
     }
     return true;
 }
@@ -83,10 +79,10 @@ bool iic_set_addr_len(int32_t mfd,int32_t len = 7)
 */
 bool iic_set_addr(int32_t mfd,int32_t addr)
 {
-    int ret = ioctl(mfd, I2C_SLAVE, (addr));    /* 设置从机地址                   */
+    int ret = ioctl(mfd, I2C_SLAVE, (addr));    /* 设置从机地址        */
     if (ret < 0) {
         printf("setenv address failed ret: %x \n", ret);
-        exit(-1);
+		return false;
     }
     return true;
 }
@@ -111,7 +107,7 @@ bool iic_read(int32_t mfd ,unsigned short addr, uint8_t* buf , int32_t read_len)
 	data.msgs = &msg;
 	if(ioctl(mfd, I2C_RDWR, &data) < 0){
         perror("read is faild");
-		exit(-1);
+		return false;
 	}
     return true;
 }
@@ -136,7 +132,7 @@ bool iic_write(int32_t mfd,unsigned short addr,uint8_t *buf,int32_t write_len)
 	
 	if(ioctl(mfd, I2C_RDWR, &data) < 0){
         perror("write is faild");
-		exit(-1);
+		return false;
 	}
     return true;
 } 
