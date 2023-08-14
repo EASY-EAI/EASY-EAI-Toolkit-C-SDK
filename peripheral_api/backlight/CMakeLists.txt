@@ -24,7 +24,6 @@ add_definitions(-Wall)
 set(commonApi_root ${CMAKE_CURRENT_SOURCE_DIR}/../)
 ## 依赖的头文件
 set(api_inc 
-	${CMAKE_SYSROOT}/usr/include/drm/ 
 	${CMAKE_CURRENT_SOURCE_DIR}/include/ 
 )
 include_directories(${PROJECT_NAME} PUBLIC ${api_inc})

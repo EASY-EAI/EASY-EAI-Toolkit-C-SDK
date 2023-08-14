@@ -20,17 +20,17 @@ int32_t wdt_open(int32_t s)
     int ret = ioctl(fd, WDIOC_SETOPTIONS, &opts);   /* 开启看门狗 */
     if(ret < 0){
         perror("open wdt");
-	    exit(-1);
+        return -1;
     }
     ret = ioctl(fd, WDIOC_SETTIMEOUT, &s);  /* 设置新的溢出时间 */
     if(ret < 0){
         perror("set wdt time");
-	    exit(-1);
+        return -1;
     }
     ret = close(fd);    /* 关闭设备文件       */
     if(ret < 0){
         perror("close device");
-        exit(-1);
+        return -1;
     }
     return 0;
 }
@@ -40,17 +40,17 @@ int32_t wdt_feeddog()
     int  fd = open("/dev/watchdog1", O_RDWR);/* 读写方式打开设备文件           */
     if (fd < 0) {
         perror("open device");
-        exit(-1);
+        return -1;
     }
     int ret = ioctl(fd, WDIOC_KEEPALIVE, 0); /* 喂狗操作 */
     if(ret < 0){
         perror("set wdt time");
-	    exit(-1);
+        return -1;
     }
     ret = close(fd); /* 关闭设备文件       */
     if(ret < 0){
         perror("close device");
-        exit(-1);
+        return -1;
     }
     return 0;
 }
@@ -60,7 +60,7 @@ int32_t wdt_close()
     int  fd = open("/dev/watchdog1", O_RDWR);   /* 读写方式打开设备文件           */
     if (fd < 0) {
         perror("open device");
-        exit(-1);
+        return -1;
     }
     if (write(fd, "V", 1) != 1) {
 			printf("write WDT_OK_TO_CLOSE failed!");
@@ -69,12 +69,12 @@ int32_t wdt_close()
     int ret = ioctl(fd, WDIOC_SETOPTIONS, &opts);   /* 关闭看门狗      */
     if(ret < 0){
         perror("close wdt");
-	    exit(-1);
+        return -1;
     }
     ret = close(fd);    /* 关闭设备文件       */
     if(ret < 0){
         perror("close device");
-        exit(-1);
+        return -1;
     }
     return 0;
 }

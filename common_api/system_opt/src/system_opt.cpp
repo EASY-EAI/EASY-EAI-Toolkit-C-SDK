@@ -261,7 +261,7 @@ double memory_usage()
     strMem[strlen(strMem)-1] = 0;
     usedRam = atoi(strMem);
 
-    printf("total : %llu, used : %llu\n", totalRam, usedRam);
+    //printf("total : %llu, used : %llu\n", totalRam, usedRam);
 
     return 100.0 * (double)usedRam/(double)totalRam;
 #endif

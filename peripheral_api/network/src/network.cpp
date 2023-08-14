@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
 
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -42,6 +43,9 @@
 
 #include <string>
 //using namespace std;
+
+#define YAML_FILE_PATH "/etc/netplan/99_config.yaml"
+
 /*********************************************************************
 Function: 
 Description:
@@ -111,6 +115,21 @@ int32_t get_dataflow_statistics(const char *device, int64_t *total_recv, int64_t
     return 0;
 }
 
+static YAML::Node interfaceNode(const char *devName){
+    static YAML::Node config;
+    config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = devName;
+    std::string netDevType;
+    if(strstr(devName, "wlan"))
+        netDevType.append("wifis");
+    else
+        netDevType.append("ethernets");
+    return config["network"][netDevType][netDevice];
+}
+typedef struct {
+    std::string devName;
+    bool isDHCP;
+}NetInterface_t;
 class network
 {
 public:
@@ -121,22 +140,65 @@ public:
         return pSelf;
     }
     network(){
-        YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-        mbEth0IsDHCP = config["network"]["ethernets"]["eth0"]["dhcp4"].as<bool>();
-        mbWlan0IsDHCP = config["network"]["wifis"]["wlan0"]["dhcp4"].as<bool>();
+        initInterfaces();
     }
     ~network();
 
-    bool get_eth0_bIsDHCP(){return mbEth0IsDHCP;}
-    void set_eth0_bIsDHCP(bool bIsDHCP){this->mbEth0IsDHCP = bIsDHCP;};
+    int ifIndex(const char *devName){
+        int index = -1;
+        for(uint32_t i = 0; i < mNetIFs.size(); i++){
+            if(0 == strcmp(mNetIFs[i].devName.c_str(), devName)){
+                index = (int)i;
+                break;
+            }
+        }
+        return index;
+    };
 
-    bool get_wifi_bIsDHCP(){return mbWlan0IsDHCP;}
-    void set_wifi_bIsDHCP(bool bIsDHCP){this->mbWlan0IsDHCP = bIsDHCP;};
+    std::vector<NetInterface_t> mNetIFs;
 
     static network *pSelf;
 private:
-    bool mbEth0IsDHCP;
-    bool mbWlan0IsDHCP;
+    int32_t initInterfaces(){
+        NetInterface_t interFace;
+        
+        struct ifaddrs *ifaddr, *ifa;
+        
+        // 获取接口地址信息链表
+        if (getifaddrs(&ifaddr) == -1) {
+            perror("getifaddrs");
+            return -1;
+        }
+        
+        // 清空网络设备列表
+        std::vector<NetInterface_t>().swap(mNetIFs);
+
+        // 避免输出重复的网卡名
+        char prev_ifname[512] = {0};
+        // 遍历接口链表并输出网卡名称
+        for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+            // 跳过空指针和非网卡接口
+            if (ifa->ifa_addr == NULL || (ifa->ifa_addr->sa_family != AF_PACKET && ifa->ifa_addr->sa_family != AF_INET))
+                continue;
+            // 跳过一些不必要的网卡
+            if((0 == strcmp(ifa->ifa_name, "lo"))||(0 == strcmp(ifa->ifa_name, "cross0")))
+                continue;
+            // 跳过重复的接口名称
+            if (NULL != strstr(prev_ifname, ifa->ifa_name))
+                continue;
+            strcpy(prev_ifname+strlen(prev_ifname), ifa->ifa_name); //记录当前输出的接口名称，以便检查重复
+    //======读取网卡信息到结构体======================================================================================
+            interFace.devName.clear();
+            interFace.devName.append(ifa->ifa_name);
+            interFace.isDHCP = interfaceNode(ifa->ifa_name)["dhcp4"].as<bool>();
+            mNetIFs.push_back(interFace);
+            printf("[network config init]>>>(%s)--DHCP(%d)\n", interFace.devName.c_str(), interFace.isDHCP);
+    //================================================================================================================
+        }
+        // 释放接口地址信息链表
+        freeifaddrs(ifaddr);
+        return 0;
+    }    
 };
 network* network::pSelf = nullptr;
 
@@ -172,6 +234,15 @@ static std::string mask_transition_cidr(std::string ip_str , std::string mask_st
     return cidr;
 }
 
+bool get_ipv4_dhcp(const char *device)
+{
+    int index = network::instance()->ifIndex(device);
+    if(0 <= index){
+        return network::instance()->mNetIFs[index].isDHCP;
+    }
+    return true; //默认为true
+}
+
 /*********************************************************************
 Function:
 Description:
@@ -187,27 +258,35 @@ Return:
 int32_t set_ipv4_dhcp(const char *device)
 {
     if(0 == strlen(device))
-    return -1;
-    // 加载YAML文件
-    YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-    if(0 == strcmp(device, "eth0")){
-        config["network"]["ethernets"]["eth0"]["dhcp4"] = "true";
-        //删除静态ip地址,网关
-        config["network"]["ethernets"]["eth0"].remove("addresses");
-        config["network"]["ethernets"]["eth0"].remove("routes");
-        network::instance()->set_eth0_bIsDHCP(true);
-    }else if(0 == strcmp(device, "wifi")){
-        config["network"]["wifis"]["wlan0"]["dhcp4"] = "true"; 
-        config["network"]["wifis"]["wlan0"].remove("addresses");
-        config["network"]["wifis"]["wlan0"].remove("routes");
-        network::instance()->set_wifi_bIsDHCP(true);
+        return -1;
+
+    int index = network::instance()->ifIndex(device);
+    if(index < 0){
+        return -1;
     }
+    
+    // 加载YAML文件
+    YAML::Node config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = device;
+    std::string netDevType;
+    if(strstr(device, "wlan")){
+        netDevType.append("wifis");
+    }else{
+        netDevType.append("ethernets");
+    }
+    config["network"][netDevType][netDevice]["dhcp4"] = "true";
+    //删除静态ip地址,网关
+    config["network"][netDevType][netDevice].remove("addresses");
+    config["network"][netDevType][netDevice].remove("routes");
+
+    network::instance()->mNetIFs[index].isDHCP = true;
     // 将修改后的YAML文档写回到文件中
-    std::ofstream fout("/etc/netplan/99_config.yaml");
+    std::ofstream fout(YAML_FILE_PATH);
     fout << config;
     fout.close();
     return 0;
 }
+
 /*********************************************************************
 Function:
 Description:
@@ -249,66 +328,47 @@ int32_t set_ipv4_static(const char *device, const char *ip, const char *mask, co
 			}
 		}
 	}
-    if(0 == strcmp(device, "eth0")){
-        // 加载YAML文件
-        YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-        //关闭dhcp
-        config["network"]["ethernets"]["eth0"]["dhcp4"] = "false";
-        // 添加 CIDR 表示法的 IP 地址
-        std::string cidr = mask_transition_cidr(ip,mask);
-        YAML::Node eth0 = config["network"]["ethernets"]["eth0"];
-        // 获取 addresses 序列
-        YAML::Node addresses = eth0["addresses"];
-
-        // 如果地址存在，则替换原有的地址；否则，创建一个新的地址
-        if (addresses[0]) {
-            addresses[0] = cidr;
-        } else {
-            addresses.push_back(cidr);
-        }
-
-        // 修改eth0的routes地址
-        if(bIsSetGateway){
-            config["network"]["ethernets"]["eth0"]["routes"][0]["to"] = "0.0.0.0/0";
-            config["network"]["ethernets"]["eth0"]["routes"][0]["via"] = gateway;
-            config["network"]["ethernets"]["eth0"]["routes"][0]["metric"] = "100";
-        }
-        // 将修改后的YAML文档写回到文件中
-        std::ofstream fout("/etc/netplan/99_config.yaml");
-        fout << config;
-        fout.close();
-        return 0;
-    }else if(0 == strcmp(device, "wifi")){
-        // 加载YAML文件
-        YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-        config["network"]["wifis"]["wlan0"]["dhcp4"] = "false"; 
-        // 添加 CIDR 表示法的 IP 地址
-        std::string cidr = mask_transition_cidr(ip,mask);
-        YAML::Node wlan0 = config["network"]["wifis"]["wlan0"];
-        // 获取 addresses 序列
-        YAML::Node addresses = wlan0["addresses"];
-
-        // 如果地址存在，则替换原有的地址；否则，创建一个新的地址
-        if (addresses[0]) {
-            addresses[0] = cidr;
-        } else {
-            addresses.push_back(cidr);
-        }
-
-        // 修改eth0的routes地址
-        if(bIsSetGateway){
-            config["network"]["wifis"]["wlan0"]["routes"][0]["to"] = "0.0.0.0/0";
-            config["network"]["wifis"]["wlan0"]["routes"][0]["via"] = gateway;
-            config["network"]["wifis"]["wlan0"]["routes"][0]["metric"] = "100";
-        }
-        // 将修改后的YAML文档写回到文件中
-        std::ofstream fout("/etc/netplan/99_config.yaml");
-        fout << config;
-        fout.close();
-        return 0;
+    
+    int index = network::instance()->ifIndex(device);
+    if(index < 0){
+        return -1;
+    }
+    
+    // 加载YAML文件
+    YAML::Node config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = device;
+    std::string netDevType;
+    if(strstr(device, "wlan")){
+        netDevType.append("wifis");
     }else{
-		return -1;
-	}
+        netDevType.append("ethernets");
+    }
+    //关闭dhcp
+    config["network"][netDevType][netDevice]["dhcp4"] = "false";
+    // 添加 CIDR 表示法的 IP 地址
+    std::string cidr = mask_transition_cidr(ip, mask);
+    // 获取 addresses 序列
+    YAML::Node addresses = config["network"][netDevType][netDevice]["addresses"];
+    // 如果地址存在，则替换原有的地址；否则，创建一个新的地址
+    if (addresses[0]) {
+        addresses[0] = cidr;
+    } else {
+        addresses.push_back(cidr);
+    }
+    // 修改routes地址
+    if(bIsSetGateway){
+        config["network"][netDevType][netDevice]["routes"][0]["to"] = "0.0.0.0/0";
+        config["network"][netDevType][netDevice]["routes"][0]["via"] = gateway;
+        config["network"][netDevType][netDevice]["routes"][0]["metric"] = "100";
+    }
+    
+    network::instance()->mNetIFs[index].isDHCP = false;
+    
+    // 将修改后的YAML文档写回到文件中
+    std::ofstream fout(YAML_FILE_PATH);
+    fout << config;
+    fout.close();
+    return 0;
 }
 
 /*********************************************************************
@@ -332,37 +392,34 @@ int32_t add_second_ipv4(const char *device, const char *ip, const char *mask)
 	if( address_invaild(ip)||address_invaild(mask) )
 		return -1;
 
-    if(0 == strcmp(device, "eth0")){
-        if(network::instance()->get_eth0_bIsDHCP()){
-            return -1;
-        }
-        // 加载YAML文件
-        YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-        // 添加 CIDR 表示法的 IP 地址
-        std::string cidr = mask_transition_cidr(ip,mask);
-        YAML::Node eth0 = config["network"]["ethernets"]["eth0"];
-        eth0["addresses"][1] = cidr;
-        config["network"]["ethernets"]["eth0"] = eth0;
-        // 将修改后的YAML文档写回到文件中
-        std::ofstream fout("/etc/netplan/99_config.yaml");
-        fout << config;
-        fout.close();
-    }else if(0 == strcmp(device, "wifi")){
-        if(network::instance()->get_wifi_bIsDHCP()){
-            return -1;
-        }
-        // 加载YAML文件
-        YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-        // 添加 CIDR 表示法的 IP 地址
-        std::string cidr = mask_transition_cidr(ip,mask);
-        YAML::Node wifi = config["network"]["wifis"]["wlan0"];
-        wifi["addresses"][1] = cidr;
-        config["network"]["wifis"]["wlan0"] = wifi;
-        // 将修改后的YAML文档写回到文件中
-        std::ofstream fout("/etc/netplan/99_config.yaml");
-        fout << config;
-        fout.close();
+    int index = network::instance()->ifIndex(device);
+    if(index < 0){
+        return -1;
     }
+
+    if(network::instance()->mNetIFs[index].isDHCP){
+        return -1;
+    }
+    
+    // 加载YAML文件
+    YAML::Node config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = device;
+    std::string netDevType;
+    if(strstr(device, "wlan")){
+        netDevType.append("wifis");
+    }else{
+        netDevType.append("ethernets");
+    }
+    // 添加 CIDR 表示法的 IP 地址
+    YAML::Node interFace = config["network"][netDevType][netDevice];
+    std::string cidr = mask_transition_cidr(ip, mask);
+    interFace["addresses"][1] = cidr;
+    config["network"][netDevType][netDevice] = interFace;
+    
+    // 将修改后的YAML文档写回到文件中
+    std::ofstream fout(YAML_FILE_PATH);
+    fout << config;
+    fout.close();
     return 0;    
 }
 
@@ -384,80 +441,47 @@ int32_t delete_second_ipv4(const char *device)
 	if(0 == strlen(device))
 		return -1;
 
-
-    if(0 == strcmp(device, "eth0")){
-        // 加载YAML文件
-        YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-        // 获取 eth0 的配置
-        YAML::Node eth0_addresses = config["network"]["ethernets"]["eth0"]["addresses"];
-
-        std::vector<std::string> addresses;
-        for (std::size_t i = 0; i < eth0_addresses.size(); i++) {
-            std::string address = eth0_addresses[i].as<std::string>();
-            addresses.push_back(address);
-            std::cout << "Address " << i << ": " << address << std::endl;
-        }
-
-        if (addresses.size() > 1) { // 如果有多于一个地址
-            // 清除第二个地址
-            std::cout << "Before removal: " << addresses[1] << std::endl;
-            addresses.erase(addresses.begin() + 1);
-            std::cout << "After removal: " << addresses[1] << std::endl;
-            // 更新 YAML 节点
-            YAML::Node new_addresses;
-            for (const auto& address : addresses) {
-                new_addresses.push_back(address);
-            }
-            config["network"]["ethernets"]["eth0"]["addresses"] = new_addresses;
-        }
-
-        // 将修改后的YAML文档写回到文件中
-        std::ofstream fout("/etc/netplan/99_config.yaml");
-        fout << config;
-        fout.close();
-    }else if(0 == strcmp(device, "wifi")){
-        // 加载YAML文件
-        YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-       // 获取 wlan0 的配置
-        YAML::Node wlan0_addresses = config["network"]["wifis"]["wlan0"]["addresses"];
-
-       std::vector<std::string> addresses;
-        for (std::size_t i = 0; i < wlan0_addresses.size(); i++) {
-            std::string address = wlan0_addresses[i].as<std::string>();
-            addresses.push_back(address);
-            std::cout << "Address " << i << ": " << address << std::endl;
-        }
-
-        if (addresses.size() > 1) { // 如果有多于一个地址
-            // 清除第二个地址
-            std::cout << "Before removal: " << addresses[1] << std::endl;
-            addresses.erase(addresses.begin() + 1);
-            std::cout << "After removal: " << addresses[1] << std::endl;
-            // 更新 YAML 节点
-            YAML::Node new_addresses;
-            for (const auto& address : addresses) {
-                new_addresses.push_back(address);
-            }
-            config["network"]["wifis"]["wlan0"]["addresses"] = new_addresses;
-        }
-
-        if (wlan0_addresses.size() > 1) { // 如果有多于一个地址
-            // 清除第二个地址
-            std::cout << "Before removal: " << wlan0_addresses[1] << std::endl;
-            wlan0_addresses.remove(1);
-            std::cout << "After removal: " << wlan0_addresses[1] << std::endl;
-        }
-        // 将修改后的YAML文档写回到文件中
-        std::ofstream fout("/etc/netplan/99_config.yaml");
-        fout << config;
-        fout.close();
+    int index = network::instance()->ifIndex(device);
+    if(index < 0){
+        return -1;
     }
+
+    // 加载YAML文件
+    YAML::Node config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = device;
+    std::string netDevType;
+    if(strstr(device, "wlan")){
+        netDevType.append("wifis");
+    }else{
+        netDevType.append("ethernets");
+    }
+    // 获取 eth0 的配置
+    YAML::Node addressesNode = config["network"][netDevType][netDevice]["addresses"];
+    std::vector<std::string> addresses;
+    for (std::size_t i = 0; i < addressesNode.size(); i++) {
+        std::string address = addressesNode[i].as<std::string>();
+        addresses.push_back(address);
+        std::cout << "Address " << i << ": " << address << std::endl;
+    }
+    if (addresses.size() > 1) { // 如果有多于一个地址
+        // 清除第二个地址
+        std::cout << "Before removal: " << addresses[1] << std::endl;
+        addresses.erase(addresses.begin() + 1);
+        std::cout << "After removal: " << addresses[1] << std::endl;
+        // 更新 YAML 节点
+        YAML::Node new_addressesNode;
+        for (const auto& address : addresses) {
+            new_addressesNode.push_back(address);
+        }
+        config["network"][netDevType][netDevice]["addresses"] = new_addressesNode;
+    }
+    // 将修改后的YAML文档写回到文件中
+    std::ofstream fout(YAML_FILE_PATH);
+    fout << config;
+    fout.close();
+
     return 0;
 }
-
-
-
-
 
 
 //判断dns地址合法性
@@ -478,39 +502,38 @@ parameter:
 Return:
 	重启网络脚本的执行结果
 ********************************************************************/
-int32_t set_ipv4_dns_dhcp(const char *device,bool enable)
+int32_t set_ipv4_dns_dhcp(const char *device, bool enable)
 {
     if(0 == strlen(device))
         return -1;
 
     //若开启dns_dhcp---->必须对应ip_dhcp开启
-    if(true == enable){
-        if((0 == strcmp(device, "eth0"))  &&  (false == network::instance()->get_eth0_bIsDHCP())){
-            return -1;
-        }else if(0 == strcmp(device, "wifi")   &&  (false == network::instance()->get_wifi_bIsDHCP())){
-            return -1;
-        }
+    int index = network::instance()->ifIndex(device);
+    if(index < 0){
+        return -1;
+    }
+    if(false == network::instance()->mNetIFs[index].isDHCP){
+        return -1;
     }
 
     // 加载YAML文件
-    YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-    if(0 == strcmp(device, "eth0")){
-        if(true == enable ){
-            config["network"]["ethernets"]["eth0"]["nameservers"].remove("addresses");
-            config["network"]["ethernets"]["eth0"]["nameservers"]["dhcp4"] = true;
-        }else{
-
-        }
-    }else if(0 == strcmp(device, "wifi")){
-        if(true == enable ){
-            config["network"]["wifis"]["wlan0"]["nameservers"].remove("addresses");
-            config["network"]["wifis"]["wlan0"]["nameservers"]["dhcp4"] = true;
-        }else{
-            
-        }
+    YAML::Node config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = device;
+    std::string netDevType;
+    if(strstr(device, "wlan")){
+        netDevType.append("wifis");
+    }else{
+        netDevType.append("ethernets");
     }
+    if(true == enable ){
+        config["network"][netDevType][netDevice]["nameservers"].remove("addresses");
+        config["network"][netDevType][netDevice]["nameservers"]["dhcp4"] = true;
+    }else{
+        
+    }
+
     // 将修改后的YAML文档写回到文件中
-    std::ofstream fout("/etc/netplan/99_config.yaml");
+    std::ofstream fout(YAML_FILE_PATH);
     fout << config;
     fout.close();
 
@@ -529,7 +552,7 @@ parameter:
 Return:
 	重启网络脚本的执行结果
 ********************************************************************/
-int32_t set_ipv4_dns_static(const char *device, const char *primary_dns,const char *alternative_dns)
+int32_t set_ipv4_dns_static(const char *device, const char *primary_dns, const char *alternative_dns)
 {
     if(0 == strlen(device))
         return -1;
@@ -542,35 +565,36 @@ int32_t set_ipv4_dns_static(const char *device, const char *primary_dns,const ch
         std::string alternative_dns_str(alternative_dns);
         if (false == is_valid_dns_server(alternative_dns_str)) 
             return -1;
-    }    
+    }
+    
+    int index = network::instance()->ifIndex(device);
+    if(index < 0){
+        return -1;
+    }
 
     // 加载YAML文件
-    YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-    if(0 == strcmp(device, "eth0")){
-        // 修改eth0的DNS地址
-        YAML::Node addresses_eht0_dns;//[8.8.8.8, 8.8.4.4]这是一个序列，需要转换
-        if(alternative_dns != NULL){
-            addresses_eht0_dns.push_back(primary_dns);
-            addresses_eht0_dns.push_back(alternative_dns);
-        }else{
-            addresses_eht0_dns.push_back(primary_dns);
-        }
-        config["network"]["ethernets"]["eth0"]["nameservers"].remove("dhcp4");
-        config["network"]["ethernets"]["eth0"]["nameservers"]["addresses"] = addresses_eht0_dns;
-    }else if(0 == strcmp(device, "wifi")){
-        // 修改eth0的DNS地址
-        YAML::Node addresses_wifi_dns;//[8.8.8.8, 8.8.4.4]这是一个序列，需要转换
-        if(alternative_dns != NULL){
-            addresses_wifi_dns.push_back(primary_dns);
-            addresses_wifi_dns.push_back(alternative_dns);
-        }else{
-            addresses_wifi_dns.push_back(primary_dns);
-        }
-        config["network"]["wifis"]["wlan0"]["nameservers"].remove("dhcp4");
-        config["network"]["wifis"]["wlan0"]["nameservers"]["addresses"] = addresses_wifi_dns;
+    YAML::Node config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = device;
+    std::string netDevType;
+    if(strstr(device, "wlan")){
+        netDevType.append("wifis");
+    }else{
+        netDevType.append("ethernets");
     }
+    
+    // 修改eth0的DNS地址
+    YAML::Node DNS_list;//[8.8.8.8, 8.8.4.4]这是一个序列，需要转换
+    if(NULL == alternative_dns){
+        DNS_list.push_back(primary_dns);
+    }else{
+        DNS_list.push_back(primary_dns);
+        DNS_list.push_back(alternative_dns);
+    }
+    config["network"][netDevType][netDevice]["nameservers"].remove("dhcp4");
+    config["network"][netDevType][netDevice]["nameservers"]["addresses"] = DNS_list;
+    
     // 将修改后的YAML文档写回到文件中
-    std::ofstream fout("/etc/netplan/99_config.yaml");
+    std::ofstream fout(YAML_FILE_PATH);
     fout << config;
     fout.close();
 
@@ -592,20 +616,29 @@ parameter:
 Return:
 	重启网络脚本的执行结果
 ********************************************************************/
-int32_t set_wifi_WAP2(const char *access, const char *password)
+int32_t set_wifi_WAP2(const char *device, const char *access, const char *password)
 {
     if(0 == strlen(access))
         return -1;
 
+    int index = network::instance()->ifIndex(device);
+    if(index < 0){
+        return -1;
+    }
+
+    YAML::Node accessPoint;
+    accessPoint[access]["password"] = password;
+
     // std::string access_str = "\"" + std::string(access) + "\""; // 加上双引号
     // std::string password_str = "\"" + std::string(password) + "\""; // 加上双引号
     // printf("access:%s , access_str:%s  ;;;;; password:%s , password_str:%s",access,access_str.c_str(),password,password_str.c_str());
-    YAML::Node config = YAML::LoadFile("/etc/netplan/99_config.yaml");
-    YAML::Node accessPoint;
-    accessPoint[access]["password"] = password;
-    config["network"]["wifis"]["wlan0"]["access-points"] = accessPoint;
+    YAML::Node config = YAML::LoadFile(YAML_FILE_PATH);
+    std::string netDevice = device;
+    
+    
+    config["network"]["wifis"][netDevice]["access-points"] = accessPoint;
     // 将修改后的YAML文档写回到文件中
-    std::ofstream fout("/etc/netplan/99_config.yaml");
+    std::ofstream fout(YAML_FILE_PATH);
     fout << config;
     fout.close();
     return 0;

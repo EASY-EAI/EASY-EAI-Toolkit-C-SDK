@@ -2,157 +2,164 @@
 <br/>
 
 
-[中文](README_CN.md)
+[English](README_EN.md)
 
 <br />
 <br />
 
-If you first come into contact with this project. You can do:  
-[reference the Quick Start Guide](https://www.easy-eai.com/document_details/3/133)
+如果您初次接触本项目，您可以：  
+[查阅入门(快速上手)指南](https://www.easy-eai.com/document_details/3/133)
 
-If you have extensive experience in embedded C development. You can do:  
-[update the application development environment first](https://www.easy-eai.com/document_details/3/135)  
-[reference the API development manual](https://www.easy-eai.com/document_details/3/129)
-
-
-How to use：  
-[1] - Clone this Git Storage to Local   
-[2] - Execute in the root directory of this repository: ./build.sh   
-[3] - All libraries will be generated to:               ./easyeai-api
+如果您具备丰富的嵌入式C语言开发经验，您可以：  
+[直接先更新应用开发环境](https://www.easy-eai.com/document_details/3/135)  
+[再查阅API开发手册](https://www.easy-eai.com/document_details/3/129)
 
 
+使用方法：  
+[1] - 克隆本GitHub仓库   
+[2] - 在本仓库根目录执行：./build.sh   
+[3] - 所有的库都会生成到：easyeai-api目录中。
 
-important update log:
+重要更新：
 ---
+> 2023-08-14 : 
+> * 发布 easyeai-api-1.0.1
+>   * 外设组件
+> 	  * [新增] GPIO简易操作接口
+> 	  * [新增] UART简易操作接口
+> 	  * [更新] 摄像头接口库，修复不能重复开关的问题
+> 	  * [更新] 显示屏接口库，可指定screen起始坐标
+> 	  * [更新] 网络配置接口库，增加配置wifi网卡的用户名密码接口
+>
 > 2023-03-31 : 
-> * Release easyeai-api-1.0.0
->   * Adapting ubuntu firmware
->   * Incompatible buildroot firmware
->   * The sdk of the buildroot version is stored in the buildroot branch of this repository
->   * common_api can be referenced by algorithm_api, media_api, netProtocol_api, and peripheral_api(Remember to append the common_api library reference of the document when calling)
+> * 发布 easyeai-api-1.0.0
+>   * 匹配 ubuntu 系统固件
+>   * 不兼容 buildroot 文件系统固件
+>   * buildroot 版本的 easyeai-api 存放在本仓库的 buildroot 分支内
+>   * 通用组件可被算法组件、媒体组件、网络协议组件、外设组件所引用(调用时记得按文档追加通用组件的库引用)
 >
 > 2023-01-09 : 
-> * Release easyeai-api-0.2.2
->   * algorithm_api
-> 	  * [new] body_pose_detect
-> 	  * [new] face_landmark98
-> 	  * [new] face_mask_judgement
-> 	  * [new] face_pose_estimation
-> 	  * [new] moving_detect
-> 	  * [update] fire_detect
-> 	  * [update] helmet_detect
-> 	  * [update] person_detect
-> 	  * [del] site_safety
->   * common_api
-> 	  * [update] Linux system operation (move network parameter to peripheral_api)
->   * media_api
-> 	  * [update] stream media encode & decode (Unbinding decoder and frame queue)
->   * netProtocol_api
-> 	  * [update] rtsp (modify rtsp server: Input with hook function)
->   * peripheral_api
-> 	  * [new] network
-> 	  * [new] spi
-> 	  * [del] socket
+> * 发布 easyeai-api-0.2.2
+>   * 算法组件
+> 	  * [新增] 骨骼点检测
+> 	  * [新增] 人脸98点检测
+> 	  * [新增] 口罩检测
+> 	  * [新增] 人脸姿态估计算法
+> 	  * [新增] 移动检测
+> 	  * [更新] 火焰检测
+> 	  * [更新] 安全帽检测
+> 	  * [更新] 人员检测
+> 	  * [删除] 工地场景目标检测
+>   * 通用组件
+> 	  * [更新] Linux系统设置 (网络参数配置移动到外设组件)
+>   * 媒体组件
+> 	  * [更新] 流媒体编解码器 (解绑解码器与环形队列，采用直接输入；新增编码器)
+>   * 网络协议组件
+> 	  * [更新] rtsp (修改rtsp服务器，采用钩子函数输入)
+>   * 外设组件
+> 	  * [新增] 网络配置
+> 	  * [新增] spi操作
+> 	  * [删除] socket库（采用直接调用）
 >
 > 2022-11-02 : 
-> * Release easyeai-api-0.2.1
->   * algorithm_api
-> 	  * [new] fire_detect
-> 	  * [new] site_safety
-> 	  * [update] helmet_detect
-> 	  * [update] person_detect
->   * common_api
-> 	  * [new] log manager (print to file or terminal can be specified)
-> 	  * [update] base64 (Fix the bug of memory leak)
-> 	  * [update] font engine (can write chinese on picture)
-> 	  * [update] ini wrapper (Put the dynamic library into tool chain)
-> 	  * [update] json parser (Improve api and Fix the bug of memory leak)
-> 	  * [update] Linux system operation (Fix some bug for IPC and Increase heartbeat mechanism)
->   * media_api
-> 	  * [update] stream media encode & decode (Improve encoder)
->   * netProtocol_api
-> 	  * [update] rtsp (add create rtsp server api)
->   * peripheral_api
-> 	  * [new] iic
-> 	  * [new] touch screen
-> 	  * [new] watch dog timer
-> 	  * [update] camera (default output BGR888)
-> 	  * [update] display (default input BGR888)
-> 	  * [update] pwm (more easy use)
+> * 发布 easyeai-api-0.2.1
+>   * 算法组件
+> 	  * [新增] 火焰检测
+> 	  * [新增] 工地场景目标检测
+> 	  * [更新] 安全帽检测
+> 	  * [更新] 人员检测
+>   * 通用组件
+> 	  * [新增] 打印日志管理系统 (可指定打印到文件内或打印到终端)
+> 	  * [更新] base64 (修复内存泄漏的bug)
+> 	  * [更新] 字库处理引擎 (可在图片上写入中文)
+> 	  * [更新] ini_wrapper (动态库放入工具链中)
+> 	  * [更新] json格式处理 (完善接口，修复内存泄漏的bug)
+> 	  * [更新] Linux系统设置 (修复进程间通信的一些bug，并增加心跳机制)
+>   * 媒体组件
+> 	  * [更新] 流媒体编解码器 (完善编码器，使其输出数据更加标准)
+>   * 网络协议组件
+> 	  * [更新] rtsp (增加rtsp服务器)
+>   * 外设组件
+> 	  * [新增] iic组件
+> 	  * [新增] 触摸屏组件
+> 	  * [新增] 看门狗组件
+> 	  * [更新] 摄像头 (默认输出BGR888)
+> 	  * [更新] 显示屏 (默认输入BGR888)
+> 	  * [更新] pwm组件 (易用性封装)
 >
 > 2022-08-25 : 
-> * Release easyeai-api-0.2.0
->   * common_api
-> 	  * [new] font engine (can write chinese on picture)
-> 	  * [update] Linux system operation (fixed some bugs for IPC)
-> 	  * [update] json parser (support multithreading calls)
->   * media_api
-> 	  * [update] stream media encode & decode
->   * netProtocol_api
-> 	  * [update] rtsp (support tcp capture rtsp stream)
->   * peripheral_api
-> 	  * [new] pwm
-> 	  * [update] camera (can set output data format)
+> * 发布 easyeai-api-0.2.0
+>   * 通用组件
+> 	  * [新增] 字库处理引擎 (可在图片上写入中文)
+> 	  * [更新] Linux系统设置 (修复进程间通信的一些bug)
+> 	  * [更新] json格式处理 (接口补完、支持多线程调用)
+>   * 媒体组件
+> 	  * [更新] 流媒体编解码器 (增加编码器、修复解码器偶尔解码失败的bug)
+>   * 网络协议组件
+> 	  * [更新] rtsp (增加配置TCP取流功能)
+>   * 外设组件
+> 	  * [新增] pwm组件
+> 	  * [更新] 摄像头 (可指定输出数据格式)
 >
 > 2022-05-24 : 
-> * Release easyeai-api-0.1.3
->   * algorithm_api
-> 	  * [new] helmet_detect
-> 	  * [new] geometry
->   * common_api
-> 	  * [update] Linux system operation
->   * media_api
-> 	  * [update] stream media encode & decode
->   * peripheral_api
-> 	  * [update] display
+> * 发布 easyeai-api-0.1.3
+>   * 算法组件
+> 	  * [新增] 安全帽识别
+> 	  * [新增] 平面几何运算
+>   * 通用组件
+> 	  * [更新] Linux系统设置
+>   * 媒体组件
+> 	  * [更新] 流媒体编解码器
+>   * 外设组件
+> 	  * [更新] 显示控制
 >
 > 2022-04-13 : 
-> * Release easyeai-api-0.1.2
->   * algorithm_api
-> 	  * [new] face_detect
-> 	  * [new] face_alignment
-> 	  * [new] face_recognition
-> 	  * [new] person_detect
-> 	  * [new] self_learning
-> 	  * [open] decode QRCode
->   * media_api
-> 	  * [update] dedicated shared memory
->   * peripheral_api
-> 	  * [new] audio
-> 	  * [update] display
-> 	  * [update] camera
+> * 发布 easyeai-api-0.1.2
+>   * 算法组件
+> 	  * [新增] 人脸检测
+> 	  * [新增] 人脸校正
+> 	  * [新增] 人脸识别
+> 	  * [新增] 人员检测
+> 	  * [新增] 自学习算法
+> 	  * [开源] 二维码解码算法
+>   * 媒体组件
+> 	  * [更新] 环形共享内存队列
+>   * 外设组件
+> 	  * [新增] wav播放与录制
+> 	  * [更新] 显示控制
+> 	  * [更新] 摄像头
 >
 > 2022-03-16 : 
-> * Release easyeai-api-0.1.1
->   * media_api
-> 	  * [new] bmp file operate
-> 	  * [update] stream media encode & decode
->   * netProtocol_api
-> 	  * [update] rtsp
+> * 发布easyeai-api-0.1.1
+>   * 媒体组件
+> 	  * [新增] bmp文件操作
+> 	  * [更新] 流媒体编解码器
+>   * 网络协议组件
+> 	  * [更新] rtsp
 >
 > 2022-01-28 : 
-> * Release easyeai-api-0.1.0
->   * peripheral_api
-> 	  * [new] backlight
-> 	  * [new] display
-> 	  * [new] camera
-> 	  * [new] socket
->   * common_api
-> 	  * [new] string operation
-> 	  * [new] Linux system operation
-> 	  * [new] base64 encode & decode
-> 	  * [new] data check
-> 	  * [new] encode QRCode
-> 	  * [new] json parser
-> 	  * [new] *.ini file operation
->   * media_api
-> 	  * [new] dedicated shared memory operation(H.264、H.265、AAC)
-> 	  * [new] stream media encode & decode
->   * netProtocol_api
-> 	  * [new] https
-> 	  * [new] rtsp
->   * algorithm_api
-> 	  * [new] decode QRCode
+> * 发布easyeai-api-0.1.0
+>   * 外设组件
+> 	  * [新增] 背光灯设置
+> 	  * [新增] 显示控制
+> 	  * [新增] 摄像头
+> 	  * [新增] socket
+>   * 通用组件
+> 	  * [新增] 字符串处理
+> 	  * [新增] Linux系统设置
+> 	  * [新增] base64转换
+> 	  * [新增] 数据校验
+> 	  * [新增] 二维码生成
+> 	  * [新增] json格式处理
+> 	  * [新增] ini文件处理
+>   * 媒体组件
+> 	  * [新增] 专用共享内存(H.264、H.265、AAC)
+> 	  * [新增] 流媒体编解码器
+>   * 网络协议组件
+> 	  * [新增] https
+> 	  * [新增] rtsp
+>   * 算法组件
+> 	  * [新增] 二维码解码
 >
 > 2021-11-01 : 
-> * create this project
+> * 创建本项目
