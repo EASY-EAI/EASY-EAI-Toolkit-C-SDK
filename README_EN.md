@@ -24,6 +24,15 @@ How to use：
 
 important update log:
 ---
+> 2023-09-06 : 
+> * Release easyeai-api-1.0.2
+>   * algorithm_api
+> 	  * [new] ocr
+>   * netProtocol_api
+> 	  * [update] https: Built-in libcurl.a into libhttps.a (unconventional approach, which will need to be separated in the future)
+>   * peripheral_api
+> 	  * [update] wdt (Resolve the issue of watchdog failure caused by Ctrl+C stopping dog feeding)
+>
 > 2023-08-14 : 
 > * Release easyeai-api-1.0.1
 >   * peripheral_api

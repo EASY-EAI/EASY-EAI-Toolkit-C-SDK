@@ -22,17 +22,19 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -DCPPHTTPLIB_OPENSSL_SU
 
 set(commonApi_root ${CMAKE_CURRENT_SOURCE_DIR}/../../easyeai-api/common_api)
 ## 依赖的头文件
-set(api_inc include/)
+set(api_inc include/ include_internal/)
 include_directories(${PROJECT_NAME} PUBLIC ${api_inc})
 
 ## 依赖的动态库文件
 set(sysLib_list 
-	pthread 
-	ssl 
-	crypto 
+    pthread 
+    ssl 
+    crypto 
+    z 
+    curl
 )
 ## 依赖的静态库文件
-
+execute_process(COMMAND ar x ${CMAKE_CURRENT_SOURCE_DIR}/libs/libcurl.a)
 file(GLOB file_obj ../build/*.o)
 set(staticLib_objs ${file_obj})
 
@@ -41,5 +43,5 @@ file(GLOB file_source src/*.c src/*.cpp)
 set(source ${file_source})
 
 ## 目标静态库
-add_library(${PROJECT_NAME} STATIC ${source} ${decryption_lib} ${hardware_verify_lib} ${staticLib_objs})
+add_library(${PROJECT_NAME} STATIC ${source} ${staticLib_objs})
 target_link_libraries(${PROJECT_NAME} ${sysLib_list})
