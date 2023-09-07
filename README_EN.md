@@ -24,6 +24,15 @@ How to use：
 
 important update log:
 ---
+> 2023-09-07 : 
+> * Release easyeai-api-1.1.0
+>   * media_api
+> 	  * [update] stream media encode & decode (1,add audio codec interface; 2, Add video encoding interface: zero copy submission & request for I frame)
+>   * netProtocol_api
+> 	  * [update] rtsp (Improve rtsp library)
+>   * peripheral_api
+> 	  * [update] audio (Rewrite using the alsa interface)
+>
 > 2023-09-06 : 
 > * Release easyeai-api-1.0.2
 >   * algorithm_api

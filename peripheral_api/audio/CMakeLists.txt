@@ -30,7 +30,7 @@ set(api_inc
 include_directories(${PROJECT_NAME} PUBLIC ${api_inc})
 
 ## 依赖的动态库文件
-set(sysLib_list pthread)
+set(sysLib_list asound pthread)
 ## 依赖的静态库文件
 file(GLOB file_obj ../build/*.o)
 set(staticLib_objs ${file_obj})
