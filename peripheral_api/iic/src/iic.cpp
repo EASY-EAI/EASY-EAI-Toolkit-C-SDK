@@ -56,7 +56,7 @@ bool iic_release(int32_t mfd)
 参数：mfd(iic设备fd)  len：从机地址长度
 返回值：成功（true） 失败（-1）
 */
-bool iic_set_addr_len(int32_t mfd,int32_t len = 7)
+bool iic_set_addr_len(int32_t mfd, int32_t len = 7)
 {
     int32_t par = 0;
     if(7 == len){

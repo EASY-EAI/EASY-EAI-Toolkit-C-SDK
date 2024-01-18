@@ -31,23 +31,11 @@
 #include "audio.h"
     
 // 根据本系统的具体字节序处理的存放格式
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-    
-    #define RIFF ('F'<<24|'F'<<16|'I'<<8|'R'<<0)
-    #define WAVE ('E'<<24|'V'<<16|'A'<<8|'W'<<0)
-    #define FMT  (' '<<24|'t'<<16|'m'<<8|'f'<<0)
-    #define DATA ('a'<<24|'t'<<16|'a'<<8|'d'<<0)
-        
+#if __BYTE_ORDER == __LITTLE_ENDIAN        
     #define LE_SHORT(val) (val)
     #define LE_INT(val)   (val)
         
-#elif __BYTE_ORDER == __BIG_ENDIAN
-    
-    #define RIFF ('R'<<24|'I'<<16|'F'<<8|'F'<<0)
-    #define WAVE ('W'<<24|'A'<<16|'V'<<8|'E'<<0)
-    #define FMT  ('f'<<24|'m'<<16|'t'<<8|' '<<0)
-    #define DATA ('d'<<24|'a'<<16|'t'<<8|'a'<<0)
-    
+#elif __BYTE_ORDER == __BIG_ENDIAN    
     #define LE_SHORT(val) bswap_16(val)
     #define LE_INT(val)   bswap_32(val)
         
@@ -80,7 +68,7 @@ typedef struct
 
 
 // 设置WAV格式参数
-static void set_wav_params(pcm_container *sound, uint32_t sampleRate, uint16_t channels, snd_pcm_format_t pcm_format)
+static void set_wav_params(pcm_container *sound, uint32_t fps, uint32_t sampleRate, uint16_t channels, snd_pcm_format_t pcm_format)
 {
     // 1: 定义并分配一个硬件参数空间
     snd_pcm_hw_params_t *hwparams;
@@ -113,7 +101,15 @@ static void set_wav_params(pcm_container *sound, uint32_t sampleRate, uint16_t c
 
     // 8: 根据buffer size设置period size
     snd_pcm_uframes_t period_size = buffer_size / 4;
+    if(0 != fps){
+        period_size = sampleRate/fps;
+    }
+    if((buffer_size/4) < period_size){
+        period_size = buffer_size / 4;
+    }
+    //printf("aaaaaaaaaaaaa period_size = %ld\n", period_size);
     snd_pcm_hw_params_set_period_size_near(sound->handle, hwparams, &period_size, 0);
+    //printf("vvvvvvvvvvvvvvv period_size = %ld\n", period_size);
 
     // 9: 获取buffer size和period size
     // 注意：snd_pcm_uframes_t均以frame为单位，而不是以Byte为单位[1frame = (声道数*量化位深/8)Byte]。
@@ -126,7 +122,7 @@ static void set_wav_params(pcm_container *sound, uint32_t sampleRate, uint16_t c
     // 11: 保存一些参数
     sound->bits_per_sample = snd_pcm_format_physical_width(pcm_format);
     sound->bytes_per_frame = sound->bits_per_sample/8 * channels;
-
+    printf("sound->frames_per_period = %ld\n",sound->frames_per_period);
     // 12: 分配一个周期数据空间
     sound->period_buf = (uint8_t *)calloc(1, sound->frames_per_period * sound->bytes_per_frame);
 }
@@ -151,7 +147,7 @@ static snd_pcm_uframes_t read_pcm_data(pcm_container *sound, snd_pcm_uframes_t f
     return exact_frames;
 }
 
-int32_t ai_init(uint32_t sampleRate, uint16_t channels, snd_pcm_format_t fmt)
+int32_t ai_init(uint32_t fps, uint32_t sampleRate, uint16_t channels, snd_pcm_format_t fmt)
 {
     if(g_pAudioInSound){
         ai_exit();
@@ -167,7 +163,7 @@ int32_t ai_init(uint32_t sampleRate, uint16_t channels, snd_pcm_format_t fmt)
         return -1;
     }
 
-    set_wav_params(g_pAudioInSound, sampleRate, channels, fmt);
+    set_wav_params(g_pAudioInSound, fps, sampleRate, channels, fmt);
 
     return 0;
 }
@@ -239,7 +235,7 @@ static ssize_t write_pcm_to_device(pcm_container *sound, uint8_t *pData)
         return nFrame;
     }
 }
-int32_t ao_init(uint32_t sampleRate, uint16_t channels, snd_pcm_format_t fmt)
+int32_t ao_init(uint32_t fps, uint32_t sampleRate, uint16_t channels, snd_pcm_format_t fmt)
 {
     if(g_pAudioIOutSound){
         ao_exit();
@@ -255,7 +251,7 @@ int32_t ao_init(uint32_t sampleRate, uint16_t channels, snd_pcm_format_t fmt)
         return -1;
     }
 
-    set_wav_params(g_pAudioIOutSound, sampleRate, channels, fmt);
+    set_wav_params(g_pAudioIOutSound, fps, sampleRate, channels, fmt);
 
     return 0;
 }
@@ -278,7 +274,7 @@ int32_t ao_exit(void)
     return 0;
 }
 
-#if 1
+#if 1 // 攒够一个周期再播放(一个周期由n个帧组成)。
 int32_t ao_writepcmBuf(uint8_t *pData, uint32_t dataLen, bool bEOS)
 {
     uint8_t *p = pData;
@@ -325,6 +321,8 @@ int32_t ao_writepcmBuf(uint8_t *pData, uint32_t dataLen, bool bEOS)
     int i = 0;
     ssize_t nFrame = 0, sumFrame = 0;
     uint8_t *pPeriodBuf = g_pAudioIOutSound->period_buf;
+    //printf("periodNum ==================== %d\n", periodNum);
+    //printf("incompleteDataLen/periodBufSize ==================== %d/%d\n", incompleteDataLen, periodBufSize);
     // 数据含有n个播放周期
     if(0 < periodNum){
         for(i = 0; i < periodNum; i++){
@@ -366,7 +364,6 @@ int32_t ao_writepcmBuf(uint8_t *pData, uint32_t dataLen, bool bEOS)
     
     return sumFrame * g_pAudioIOutSound->bytes_per_frame;
 }
-
 #else   // 这种方法占用的内存和CPU开销较大，不推荐使用，不删掉代码仅供参考
     #if 1
 static ssize_t write_pcm_period(pcm_container *sound, uint8_t *pData, int32_t frameNum, bool bEOS)

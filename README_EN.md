@@ -24,6 +24,17 @@ How to use：
 
 important update log:
 ---
+> 2024-01-17 : 
+> * Release easyeai-api-1.2.10
+>   * media_api
+> 	  * [update] stream media encode & decode (1，Solved the problem of uneven decoding output；2，Added the EOS flag；3，The decoding method for sending memory has added a reference frame rate)
+>   * netProtocol_api
+> 	  * [update] rtsp (1，Added feature: Configurable waiting time for stream timeout；2，Added H265 frame rate analysis)
+>   * peripheral_api
+> 	  * [update] audio (Improve audio library)
+> 	  * [update] camera (1，Solved the memory leakage problem caused by frequent switching of ispServer；2，Opened mipicamera API, allowing it to open 2 RGB cameras)
+> 	  * [update] display (Optimized the calling performance of the normal mode API group)
+>
 > 2023-09-07 : 
 > * Release easyeai-api-1.1.0
 >   * media_api
