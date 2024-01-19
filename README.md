@@ -24,6 +24,11 @@ How to use：
 
 important update log:
 ---
+> 2024-01-19 : 
+> * Release easyeai-api-0.3.10
+>   * Synchronize the partial updates of the Ubuntu version toolkit (version excerpted from easyeai api-1.2.10)
+>   * Note: This branch still cannot be used for Ubuntu firmware
+>
 > 2023-01-09 : 
 > * Release easyeai-api-0.2.2
 >   * algorithm_api

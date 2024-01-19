@@ -29,6 +29,7 @@
 #include <arpa/inet.h>
 
 #include "network.h"
+#include <arpa/inet.h>
 
 #include <string>
 #include <iostream>
@@ -36,6 +37,74 @@
 #include <sstream>
 
 //using namespace std;
+/*********************************************************************
+Function: 
+Description:
+    获取网络数据流量统计信息
+Example:
+    int64_t recvByte, sendByte;
+    int32_t ret = get_dataflow_statistics("eth0", &recvByte, &snedByte);
+parameter:
+    *device  : 网卡
+    *total_recv : 累计已接收(下行)的数据量，单位：字节(Byte)
+    *total_send : 累计已发送(上行)的数据量，单位：字节(Byte)
+Return:
+    成功：0
+    失败：-1 
+********************************************************************/
+int32_t get_dataflow_statistics(const char *device, int64_t *total_recv, int64_t *total_send) 
+{
+     if((NULL == device)||(NULL == total_recv)||(NULL == total_send)) {
+        printf("bad param\n");
+        return -1;    
+    }
+    
+    FILE *netdev_Fp = NULL;
+    netdev_Fp = fopen("/proc/net/dev", "r");
+    if (NULL == netdev_Fp) {
+        printf("open file /proc/net/dev/ error!\n");
+        return -1;
+    }
+    
+    int counter = 0;
+    char *match = NULL;    //用以保存所匹配字符串及之后的内容
+    char buffer[1024];  //文件中的内容暂存在字符缓冲区里
+    char tmp_value[128];
+    
+    memset(buffer, 0, sizeof(buffer));
+    while(NULL != fgets(buffer, sizeof(buffer), netdev_Fp))
+    {
+        match = strstr(buffer, device);
+        if(NULL == match) {
+            //printf("no eth0 keyword to find!\n");
+            continue;
+        } else {
+            //printf("%s\n",buffer);
+            match = match + strlen(device) + strlen(":");/*地址偏移到冒号*/
+            sscanf(match, "%lld ", total_recv);
+            memset(tmp_value, 0, sizeof(tmp_value));
+            sscanf(match, "%s ", tmp_value);
+            match = match + strlen(tmp_value);
+            for(size_t i = 0; i < strlen(buffer); i++)
+            {
+                if(0x20 == *match) {
+                    match++;
+                } else {
+                    if(8 == counter) {
+                        sscanf(match,"%lld ", total_send);
+                    }
+                    memset(tmp_value,0,sizeof(tmp_value));
+                    sscanf(match,"%s ",tmp_value);
+                    match = match + strlen(tmp_value);
+                    counter++;
+                }
+            }
+            //printf("%s save_rate:%ld tx_rate:%ld\n",netname,*save_rate,*tx_rate);
+        }
+    }
+    fclose(netdev_Fp);
+    return 0;
+}
 
 /*********************************************************************
 Function:

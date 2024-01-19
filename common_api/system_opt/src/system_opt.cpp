@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/ioctl.h>
+#include <sys/vfs.h>
 
 #include <arpa/inet.h>
 
@@ -48,7 +49,6 @@
 #include <string>
 
 //======================================= system_opt =======================================
-#include "print_msg.h"
 #include "system_opt.h"
 
 using namespace std;
@@ -63,6 +63,254 @@ using namespace std;
         *(pointer) = value;\
     }\
 }while(0)
+
+
+/*********************************************************************
+Function:
+Description:
+	查看cpu的实时温度
+Example:
+	double cpuTemp = cpu_tempture();
+parameter:
+    无
+Return:
+	cpu的实时温度，单位：摄氏度
+********************************************************************/
+double cpu_tempture()
+{
+    FILE *fd = NULL;
+    int temp;
+    char buff[256];
+
+    fd = fopen("/sys/class/thermal/thermal_zone0/temp","r");
+    if(fd){
+        fgets(buff,sizeof(buff),fd);
+        sscanf(buff, "%d", &temp);
+
+        fclose(fd);
+        
+        return (double)temp/1000.0;
+    }else{
+        return 0.0;
+    }
+}
+
+/*********************************************************************
+Function:
+Description:
+	查看npu的实时温度
+Example:
+	double npuTemp = npu_tempture();
+parameter:
+    无
+Return:
+	npu的实时温度，单位：摄氏度
+********************************************************************/
+double npu_tempture()
+{
+    FILE *fd = NULL;
+    int temp;
+    char buff[256];
+
+    fd = fopen("/sys/class/thermal/thermal_zone1/temp","r");
+    if(fd){
+        fgets(buff,sizeof(buff),fd);
+        sscanf(buff, "%d", &temp);
+
+        fclose(fd);
+        
+        return (double)temp/1000.0;
+    }else{
+        return 0.0;
+    }
+}
+
+/*********************************************************************
+Function:
+Description:
+	获取CPU状态到cpu_occupy_t结构体
+Example:
+	get_cpu_occupy((cpu_occupy_t *)&cpu_stat1);
+parameter:
+    cpust: 用于存放cpu状态的结构体
+Return:
+	无
+********************************************************************/
+void get_cpu_occupy(cpu_occupy_t *cpust)
+{
+    FILE *fd;
+    char buff[256];
+    cpu_occupy_t *cpu_occupy;
+
+    cpu_occupy=cpust;
+    fd = fopen ("/proc/stat", "r");
+
+    if(fd == NULL){
+        perror("fopen:");
+        exit (0);
+    }
+
+    fgets (buff, sizeof(buff), fd);
+    sscanf (buff, "%s %u %u %u %u %u %u %u", 
+                        cpu_occupy->name,
+                        &cpu_occupy->user,
+                        &cpu_occupy->nice,
+                        &cpu_occupy->system,
+                        &cpu_occupy->idle,
+                        &cpu_occupy->iowait,
+                        &cpu_occupy->irq,
+                        &cpu_occupy->softirq);
+    fclose(fd);
+}
+
+/*********************************************************************
+Function:
+Description:
+	通过新旧2次的CPU状态计算出CPU占用率
+Example:
+	double cpu_usage()
+    {
+        static bool bIsFirstTimeGet = true;
+        static cpu_occupy_t cpu_stat1;
+        cpu_occupy_t cpu_stat2;
+
+        double cpu;
+
+        if(bIsFirstTimeGet){
+            bIsFirstTimeGet = false;
+            
+            get_cpu_occupy((cpu_occupy_t *)&cpu_stat1);
+            msleep(500);
+            get_cpu_occupy((cpu_occupy_t *)&cpu_stat2);
+        }else{
+            get_cpu_occupy((cpu_occupy_t *)&cpu_stat2);
+        }
+        //计算cpu使用率
+        cpu = cal_cpu_occupy ((cpu_occupy_t *)&cpu_stat1, (cpu_occupy_t *)&cpu_stat2);
+        memcpy(&cpu_stat1, &cpu_stat2, sizeof(cpu_occupy_t));
+
+        return cpu;
+    }
+parameter:
+    o: 上次获取的cpu状态
+    n: 新获取的cpu状态
+Return:
+	cpu的占用率
+********************************************************************/
+double cal_cpu_occupy(cpu_occupy_t *o, cpu_occupy_t *n)
+{
+    double od, nd;
+    double id, sd;
+    double cpu_use;
+
+    od = (double) (o->user + o->nice + o->system + o->idle + o->softirq + o->iowait + o->irq);//第一次(用户+优先级+系统+空闲)的时间再赋给od
+    nd = (double) (n->user + n->nice + n->system + n->idle + n->softirq + n->iowait + n->irq);//第二次(用户+优先级+系统+空闲)的时间再赋给od
+    id = (double) (n->idle); //用户第一次和第二次的时间之差再赋给id
+    sd = (double) (o->idle) ; //系统第一次和第二次的时间之差再赋给sd
+    
+    if((nd-od) != 0)
+        cpu_use =100.0 - ((id-sd))/(nd-od)*100.00; //((用户+系统)乘100)除(第一次和第二次的时间差)再赋给g_cpu_used
+    else
+        cpu_use = 0;
+
+    return cpu_use;
+}
+
+/*********************************************************************
+Function:
+Description:
+	查看可用内存的已使用空间占用率
+Example:
+	double memUsage = memory_usage();
+parameter:
+    无
+Return:
+	可用内存的已使用空间占用率
+********************************************************************/
+double memory_usage()
+{
+#if 0
+    double totalRam = 0.0;
+    double freeRam = 0.0;
+    double usedRam = 0.0;
+    struct sysinfo sysInfo;
+    if(sysinfo(&sysInfo) == 0)
+    {
+        totalRam = (double)sysInfo.totalram;
+        freeRam  = (double)(sysInfo.freeram + sysInfo.bufferram);
+        usedRam = totalRam - freeRam;
+        printf("total:[uint](%ld)--[double](%f)\n", sysInfo.totalram, totalRam);
+        printf("free:[uint](%ld)--[double](%f)\n", sysInfo.freeram + sysInfo.bufferram, freeRam);
+        printf("buff:[uint](%ld)--[double](  )\n", sysInfo.bufferram);
+        printf("used:[uint](   )--[double](%f)\n", usedRam);
+        printf (100*(double)usedRam/(double)totalRam);
+    }
+    return 100.0;
+#else
+    char strMem[64];
+    uint64_t totalRam = 0;
+    uint64_t usedRam = 0;
+
+    memset(strMem, 0, sizeof(strMem));
+    exec_cmd_by_popen("free -b | grep Mem | awk '{print $2}'", strMem);
+    strMem[strlen(strMem)-1] = 0;
+    totalRam = atoi(strMem);
+
+    memset(strMem, 0, sizeof(strMem));
+    exec_cmd_by_popen("free -b | grep Mem | awk '{print $3}'", strMem);
+    strMem[strlen(strMem)-1] = 0;
+    usedRam = atoi(strMem);
+
+    //printf("total : %llu, used : %llu\n", totalRam, usedRam);
+
+    return 100.0 * (double)usedRam/(double)totalRam;
+#endif
+}
+
+/*********************************************************************
+Function:
+Description:
+	获取挂载点(分区)占用率
+Example:
+	double diskUsage = partition_usage("/userdata");
+parameter:
+    path: 需要查询的挂载点(分区)在文件系统的目录
+Return:
+	挂载点(分区)已被使用的空间占用率
+********************************************************************/
+double partition_usage(const char *path)
+{
+    /*
+    struct statfs 
+    { 
+       long    f_type;     // 文件系统类型  
+       long    f_bsize;    // 经过优化的传输块大小  
+       long    f_blocks;   // 文件系统数据块总数 
+       long    f_bfree;    // 可用块数
+       long    f_bavail;   // 非超级用户可获取的块数 
+       long    f_files;    // 文件结点总数
+       long    f_ffree;    // 可用文件结点数
+       fsid_t  f_fsid;     // 文件系统标识
+       long    f_namelen;  // 文件名的最大长度
+    };
+    */
+    struct statfs s;
+    memset(&s, 0, sizeof(struct statfs));
+    
+    if(0 == statfs(path, &s)){
+
+        double percentage = (s.f_blocks - s.f_bfree) * 100 /(s.f_blocks - s.f_bfree + s.f_bavail) + 1;
+#if 0
+        int64_t bsize = s.f_bsize;                // in bytes
+        int64_t totalSize = (bsize * s.f_blocks);      // in bytes
+        int64_t freeSize = (bsize * s.f_bfree);          // in bytes
+        int64_t availSize = (bsize * s.f_bavail);         // in bytes
+#endif
+        return percentage;
+    }else{
+        return 100.0;
+    }
+}
 
 /*********************************************************************
 Function:
@@ -98,7 +346,6 @@ uint64_t get_timeval_ms()
 {
     struct timeval tv;
 	gettimeofday(&tv, NULL);	// UTC时间
-	
 	return ((uint64_t)tv.tv_sec * 1000 + tv.tv_usec/1000);
 }
 
@@ -365,6 +612,35 @@ int32_t CreateNormalThread(ThreadEntryPtrType entry, void *para, pthread_t *pid)
     return -1;
 }
 
+int32_t CreateJoinThread(ThreadEntryPtrType entry, void *para, pthread_t *pid)
+{
+    pthread_t ThreadId;
+    pthread_attr_t attr;
+
+    pthread_attr_init(&attr);
+    pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    if(pthread_create(&ThreadId, &attr, entry, para) == 0)
+    {
+        pthread_attr_destroy(&attr);
+        TRY_EVALUATE_POINTER(pid, ThreadId);
+
+        return 0;
+    }
+
+    pthread_attr_destroy(&attr);
+
+    return -1;
+}
+
+int32_t WaitExitThread(pthread_t pid)
+{
+    if (pthread_join(pid, NULL) == 0){
+        return 0;
+    }
+    return -1;
+}
+
 /*********************************************************************
 Function:
 Description:
@@ -497,14 +773,8 @@ int32_t exec_cmd_by_popen(const char *cmd, char *result)
         ptr = NULL;
 		return 0;
     } else {
-        PRINT_ERROR("popen %s error\n", ps);
+        printf("popen %s error\n", ps);
 		return -1;
     }
-}
-
-int32_t (*SysOpt::gpF_outlog)(char const *filePath, int lineNum, char const *funcName, int logLevel, char const *logCon, va_list args) = NULL;
-void setSystemOpt_print(int32_t (*pFunc)(char const *filePath, int lineNum, char const *funcName, int logLevel, char const *logCon, va_list args))
-{
-    SysOpt::set_print_callback(pFunc);
 }
 

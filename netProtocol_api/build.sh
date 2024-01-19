@@ -35,9 +35,9 @@ compiler_api()
 
 	if [ -e $1/CMakeLists.txt ]||[ -d $1/include ]||[ -d $1/src ]; then
 		mv build/*.a output/$1
-		if [ -e $1/libs ]; then
-			cp $1/libs/* output/$1 -rf
-		fi
+		#if [ -e $1/libs ]; then
+			#cp $1/libs/* output/$1 -rf
+		#fi
 		cp $1/include/* output/$1 -rf
 	else
 		cp $1/*.a output/$1 -rf

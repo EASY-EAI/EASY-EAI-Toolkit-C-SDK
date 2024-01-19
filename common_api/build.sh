@@ -2,7 +2,12 @@
 
 set -e
 
-api_list=`ls -I "build*" -I "output"`
+# 前置库列表：需要被后面的库依赖，因此这些库需要提前编译
+preLib_list="log_manager system_opt"
+# 后置库列表：需要依赖前置的库，因此编译顺序靠后
+postLib_list=`ls -I "build*" -I "output" -I "log_manager" -I "system_opt"`
+
+api_list="$preLib_list $postLib_list"
 
 usage()
 {
@@ -32,13 +37,14 @@ compiler_api()
 
 	if [ -e $1/CMakeLists.txt ]||[ -d $1/include ]||[ -d $1/src ]; then
 		mv build/*.a output/$1
-		if [ -e $1/libs ]; then
-			cp $1/libs/* output/$1 -rf
-		fi
+		#if [ -e $1/libs ]; then
+		#	cp $1/libs/* output/$1 -rf
+		#fi
 		cp $1/include/* output/$1 -rf
 	else
-		cp $1/*.a output/$1 -rf
-		cp $1/*.h output/$1 -rf
+#		cp $1/*.a output/$1 -rf
+#		cp $1/*.h output/$1 -rf
+		cp $1/* output/$1 -rf
 	fi
 }
 

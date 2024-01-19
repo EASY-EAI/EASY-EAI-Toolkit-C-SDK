@@ -12,7 +12,6 @@
  * 
  */
 
-#include <stdint.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,8 +70,8 @@ static int do_spi_transfer(int fd, uint32_t mode, uint16_t delay, uint8_t const 
 	}
 
 	ret = ioctl(fd, SPI_IOC_MESSAGE(1), &tr);
-	if (ret < 1)
-		return -1;
+
+	return ret;
 }
 
 int spi_transfer(int bus, int select, uint8_t const *tx, uint8_t const *rx, size_t len)
@@ -199,7 +198,7 @@ int spi_init(int bus, int select, uint32_t mode, uint8_t bits, uint32_t speed, u
 	for (int i = 0; i < dev_num; i++) {
 		tmp = (spidev_t *)g_dev_list->at(g_dev_list, i);
 		if (tmp && tmp->bus == bus && tmp->select == select) {
-			printf("spidev at bus % : select %d had init.\n", bus, select);
+			printf("spidev at bus %d : select %d had init.\n", bus, select);
 			return -1;
 		}
 	}

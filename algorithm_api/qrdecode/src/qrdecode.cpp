@@ -31,7 +31,11 @@ int qr_decode(cv::Mat src, struct qrcode_info *p_info)
     }
     else 
     {
-        cv::cvtColor(src, gray, CV_RGB2GRAY);
+#if (CV_VERSION_MAJOR >= 4)
+		cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY);
+#else
+		cv::cvtColor(src, gray, CV_RGB2GRAY);
+#endif
     }
     int width   = gray.cols;
     int height  = gray.rows;

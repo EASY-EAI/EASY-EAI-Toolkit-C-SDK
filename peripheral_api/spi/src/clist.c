@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <stdint.h>
 #include "clist.h"
 
 typedef struct
@@ -247,7 +246,7 @@ void CList_print_(CList *l, int n, const char *type)
       else if (strcmp(type, "short") == 0) printf("%hi  ", *(short*) data);
       else if (strcmp(type, "int") == 0) printf("%i  ", *(int*) data);
       else if (strcmp(type, "long") == 0) printf("%li  ", *(long*) data);
-      else if (strcmp(type, "uintptr_t") == 0) printf("%zx  ", (uintptr_t*) data);
+      else if (strcmp(type, "uintptr_t") == 0) printf("%p  ", (uintptr_t*) data);
       else if (strcmp(type, "size_t") == 0) printf("%zu  ", *(size_t*) data);
       else if (strcmp(type, "double") == 0) printf("%f  ", *(double*) data);
       else if (strcmp(type, "string") == 0) printf("%s\n", data);
