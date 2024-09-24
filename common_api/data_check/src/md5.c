@@ -387,23 +387,21 @@ static void MD5_memset (POINTER output,
 /* Digests a string and prints the result.
  */
 char* MDString (char *string)
- 
 {
     MD5_CTX context;
     unsigned char digest[16];
     char output1[32];
-    static  char output[33]= {""};
     unsigned int len = strlen (string);
     int i;
     MD5Init (&context);
     MD5Update (&context, (unsigned char*)string, len);
     MD5Final (digest, &context);
- 
-    for (i = 0; i < 16; i++)
-    {
+    for (i = 0; i < 16; i++) {
         sprintf(&(output1[2*i]),"%02x",(unsigned char)digest[i]);
-        sprintf(&(output1[2*i+1]),"%02x",(unsigned char)(digest[i]<<4));
+        //sprintf(&(output1[2*i+1]),"%02x",(unsigned char)(digest[i]<<4));
     }
+    
+    static char output[33]= {0};
     for(i=0; i<32; i++)
         output[i]=output1[i];
     return output;
@@ -414,31 +412,27 @@ char* MDString (char *string)
  */
 char* MDFile (char *filename)
 {
-    static char output[33]= {""};
-    FILE *file;
-    MD5_CTX context;
-    int len;
-    unsigned char buffer[1024], digest[16];
-    int i;
+    static char output[33]= {0};
     char output1[32];
-    if ((file = fopen (filename, "rb")) == NULL)
-    {
+    
+    FILE *file;
+    if ((file = fopen (filename, "rb")) == NULL){
         printf("%s can't be opened   ", filename);
         return 0;
-    }
-    else
-    {
+    } else {
+        unsigned char buffer[1024], digest[16];
+        MD5_CTX context;
         MD5Init (&context);
+        int len;
         while (len = fread (buffer, 1, 1024, file))
             MD5Update (&context, buffer, len);
         MD5Final (digest, &context);
         fclose (file);
-        for (i = 0; i < 16; i++)
-        {
+        for (int i = 0; i < 16; i++){
             sprintf(&(output1[2*i]),"%02x",(unsigned char)digest[i]);
-            sprintf(&(output1[2*i+1]),"%02x",(unsigned char)(digest[i]<<4));
+//            sprintf(&(output1[2*i+1]),"%02x",(unsigned char)(digest[i]<<4));
         }
-        for(i=0; i<32; i++)
+        for(int i=0; i<32; i++)
             output[i]=output1[i];
         return output;
     }

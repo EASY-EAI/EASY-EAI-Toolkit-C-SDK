@@ -24,6 +24,28 @@ How to use：
 
 important update log:
 ---
+> 2024-09-24 : 
+> * Release easyeai-api-2.0.0
+>   * compatibility：
+> 	  * Ubuntu system firmware for versions 20240920 and later, using easyai-api-2.x.x
+> 	  * Ubuntu system firmware for versions 20240227 and later, using easyai-api-1.x.x
+> 	  * Incompatible buildroot firmware
+>   * algorithm_api
+> 	  * [update] body_pose_detect
+> 	  * [update] car_detect
+> 	  * [update] OCR
+> 	  * [update] smoke_detect
+>   * common_api
+> 	  * [update] Inter-Process Communication
+> 	  * [update] data check（Fixed the bug where md5 validation caused program crashes due to array out of bounds）
+>   * media_api
+> 	  * [update] codec
+>   * netProtocol_api
+> 	  * [update] http（Use Ubuntu's official libcurl）
+> 	  * [update] rtsp (Fix bug where live555 Segmentation fault when URL is empty)
+>   * peripheral_api
+> 	  * [update] camera (Add data format configuration for USB camera)
+>
 > 2024-01-17 : 
 > * Release easyeai-api-1.2.10
 >   * media_api
